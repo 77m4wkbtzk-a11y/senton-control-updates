@@ -1,6 +1,8 @@
 {
-    "download_url":  "https://raw.githubusercontent.com/77m4wkbtzk-a11y/senton-control-updates/main/releases/Senton-Control.exe",
     "version":  "1.2.3",
+    "channel":  "public",
+    "sha256":  "c5c0fb2c2cfd03f7f160a44203cf53c61ebb49d7388baac7dad8ce113df5030f",
     "required":  false,
-    "notes":  "Senton Control v1.2.3 beta update. Hard-tested successful beta build."
+    "download_url":  "https://raw.githubusercontent.com/77m4wkbtzk-a11y/senton-control-updates/main/releases/Senton-Control.exe",
+    "notes":  "Senton Control v1.2.3 beta update. Hard-tested build with updater BOM fix and AI simulation."
 }
