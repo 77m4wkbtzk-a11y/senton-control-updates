@@ -39,17 +39,27 @@ jobs:
           cd source
           python -m PyInstaller --clean --noconfirm --noconsole --onefile --name "Senton Control" main.py
 
-      - name: Publish update executable
+      - name: Publish beta update
         shell: powershell
         run: |
           New-Item -ItemType Directory -Force -Path releases | Out-Null
           Copy-Item "source/dist/Senton Control.exe" "releases/Senton-Control.exe" -Force
+
+          $version = python -c "import sys; sys.path.insert(0, 'source'); import config; print(config.APP_VERSION)"
+          $manifest = @{
+            version = $version.Trim()
+            download_url = "https://raw.githubusercontent.com/77m4wkbtzk-a11y/senton-control-updates/main/releases/Senton-Control.exe"
+            notes = "Senton Control v$($version.Trim()) beta update. Latest successful beta build."
+            required = $false
+          } | ConvertTo-Json
+          Set-Content -Path "update.json" -Value $manifest -Encoding utf8
+
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add releases/Senton-Control.exe
+          git add releases/Senton-Control.exe update.json
           git diff --cached --quiet
           if ($LASTEXITCODE -ne 0) {
-            git commit -m "Build Senton Control beta"
+            git commit -m "Publish Senton Control v$($version.Trim()) beta"
             git pull --rebase origin main
             git push origin main
           }
