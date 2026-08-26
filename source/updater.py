@@ -2,6 +2,7 @@ import json
 import os
 import subprocess
 import tempfile
+import time
 import urllib.request
 from pathlib import Path
 import config
@@ -9,6 +10,8 @@ import config
 MAIN_INSTALL_DIR = Path(r"C:\Users\Admin\Desktop\senton_dashboard")
 MAIN_EXE = MAIN_INSTALL_DIR / "dist" / "Senton Control.exe"
 BACKUP_EXE = MAIN_INSTALL_DIR / "dist" / "Senton Control.backup.exe"
+BACKUP_MARKER = MAIN_INSTALL_DIR / "dist" / "Senton Control.backup.timestamp"
+BACKUP_RETENTION_SECONDS = 24 * 60 * 60
 
 
 def _version_tuple(version):
@@ -59,12 +62,33 @@ def download_update(download_url):
     return target
 
 
+def cleanup_expired_backup():
+    """Keep the previous EXE for one day, then remove it on a later app start."""
+    try:
+        if not BACKUP_EXE.exists():
+            if BACKUP_MARKER.exists():
+                BACKUP_MARKER.unlink(missing_ok=True)
+            return False
+
+        if BACKUP_MARKER.exists():
+            created = float(BACKUP_MARKER.read_text(encoding="utf-8").strip())
+        else:
+            created = BACKUP_EXE.stat().st_mtime
+
+        if time.time() - created >= BACKUP_RETENTION_SECONDS:
+            BACKUP_EXE.unlink(missing_ok=True)
+            BACKUP_MARKER.unlink(missing_ok=True)
+            return True
+    except Exception:
+        pass
+    return False
+
+
 def install_update_to_main_desktop(downloaded_exe):
     """Close the running app, replace the Desktop EXE, then relaunch it.
 
-    The helper waits for the current Senton Control process to exit before
-    touching the EXE. If replacement fails, the previous EXE is restored and
-    relaunched.
+    The previous EXE is kept as a rollback copy for 24 hours. If replacement
+    fails, the previous EXE is restored and relaunched immediately.
     """
     downloaded_exe = Path(downloaded_exe)
     if not MAIN_INSTALL_DIR.exists():
@@ -89,7 +113,9 @@ def install_update_to_main_desktop(downloaded_exe):
         ")",
         "echo Installing Senton Control update...",
         f'if exist "{BACKUP_EXE}" del /q "{BACKUP_EXE}"',
+        f'if exist "{BACKUP_MARKER}" del /q "{BACKUP_MARKER}"',
         f'if exist "{MAIN_EXE}" copy /y "{MAIN_EXE}" "{BACKUP_EXE}" >nul',
+        f'powershell -NoProfile -Command "[IO.File]::WriteAllText(\'{BACKUP_MARKER}\', [string]([DateTimeOffset]::UtcNow.ToUnixTimeSeconds()))"',
         f'copy /y "{downloaded_exe}" "{MAIN_EXE}" >nul',
         "if errorlevel 1 goto update_failed",
         f'if not exist "{MAIN_EXE}" goto update_failed',
