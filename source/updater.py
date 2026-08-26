@@ -39,6 +39,8 @@ def check_for_update(current_version):
             "download_url": str(manifest.get("download_url", "")).strip(),
             "notes": str(manifest.get("notes", "")).strip(),
             "required": bool(manifest.get("required", False)),
+            "sha256": str(manifest.get("sha256", "")).strip().lower(),
+            "channel": str(manifest.get("channel", "public")).strip().lower(),
         }
     except Exception as exc:
         return {"ok": False, "reason": str(exc)}
