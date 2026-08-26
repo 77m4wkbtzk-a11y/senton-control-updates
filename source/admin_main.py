@@ -4,7 +4,7 @@ import sys
 import urllib.request
 
 from PySide6.QtCore import QTimer
-from PySide6.QtWidgets import QApplication, QMessageBox
+from PySide6.QtWidgets import QApplication
 
 import config
 from dashboard import SentonDashboard
@@ -28,7 +28,7 @@ def _version_tuple(version):
 
 def _read_manifest(url, channel_name):
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "Senton-Control-Admin-Updater"})
+        req = urllib.request.Request(url, headers={"User-Agent": "Senton-Control-Owner-Admin-Updater"})
         with urllib.request.urlopen(req, timeout=8) as response:
             manifest = json.loads(response.read().decode("utf-8-sig"))
         manifest["_channel_name"] = channel_name
@@ -57,7 +57,7 @@ def _latest_available_update(current_version):
 def run_admin_update_check(window):
     result = _latest_available_update(config.APP_VERSION)
     if not result:
-        window._log("ADMIN UPDATE WATCH: no newer update available on admin or public channel")
+        window._log("OWNER ADMIN UPDATE: no newer verified update available")
         return
 
     latest = str(result.get("version", "?"))
@@ -65,51 +65,36 @@ def run_admin_update_check(window):
     download_url = str(result.get("download_url", "")).strip()
     expected_hash = str(result.get("sha256", "")).strip().lower()
 
-    if not download_url:
-        window._log(f"ADMIN UPDATE WATCH: v{latest} metadata incomplete; download blocked")
+    # Owner-admin automatic installs are allowed only for hash-verified packages.
+    if not download_url or not expected_hash:
+        window._log(f"OWNER ADMIN UPDATE: v{latest} missing verified metadata; automatic install blocked")
         return
 
     try:
-        window.update_status.setText(
-            f"{channel} update v{latest} found. Downloading and verifying..."
-        )
-        window._log(f"ADMIN UPDATE WATCH: downloading v{latest} from {channel} channel")
+        window.update_status.setText(f"{channel} update v{latest} found. Updating automatically...")
+        window._log(f"OWNER ADMIN UPDATE: downloading v{latest} from {channel} channel")
         path = download_update(download_url)
+        actual_hash = _sha256(path)
+        if actual_hash != expected_hash:
+            raise RuntimeError("Update integrity check failed. Automatic installation blocked.")
 
-        # Admin builds must carry a SHA-256. Public builds are verified when a hash is supplied.
-        if channel == "ADMIN" and not expected_hash:
-            raise RuntimeError("Admin update is missing its SHA-256 integrity value.")
-        if expected_hash:
-            actual_hash = _sha256(path)
-            if actual_hash != expected_hash:
-                raise RuntimeError("Update integrity check failed. Installation blocked.")
-
-        window.update_status.setText(f"Update v{latest} downloaded and verified.")
-        answer = QMessageBox.question(
-            window,
-            "Senton Control update ready",
-            f"Senton Control update v{latest} from the {channel.lower()} channel is ready.\n\nInstall it now?",
-        )
-        if answer != QMessageBox.Yes:
-            window._log(f"ADMIN UPDATE WATCH: v{latest} left pending by admin")
-            return
-
-        window._log(f"ADMIN UPDATE WATCH: v{latest} approved for installation")
+        window._log(f"OWNER ADMIN UPDATE: v{latest} verified; automatic installation starting")
+        window.update_status.setText(f"Verified v{latest}. Restarting to install...")
         install_update_to_main_desktop(path)
         QApplication.quit()
     except Exception as exc:
-        window._log(f"ADMIN UPDATE WATCH failed: {exc}")
-        window.update_status.setText(f"Admin update failed: {exc}")
+        window._log(f"OWNER ADMIN UPDATE failed: {exc}")
+        window.update_status.setText(f"Admin automatic update failed: {exc}")
 
 
 if __name__ == "__main__":
     cleanup_expired_backup()
     app = QApplication(sys.argv)
-    app.setApplicationName("Senton Control Admin")
+    app.setApplicationName("Senton Control Owner Admin")
     window = SentonDashboard(config.APP_VERSION)
-    window.setWindowTitle(f"Senton Control v{config.APP_VERSION} — ADMIN")
+    window.setWindowTitle(f"Senton Control v{config.APP_VERSION} — OWNER ADMIN")
     window.show()
 
-    # Check both admin and public update channels after startup.
+    # Owner-admin build checks both channels automatically after startup.
     QTimer.singleShot(2500, lambda: run_admin_update_check(window))
     sys.exit(app.exec())
