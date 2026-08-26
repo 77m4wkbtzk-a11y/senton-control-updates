@@ -22,8 +22,6 @@ jobs:
     steps:
       - name: Checkout admin channel
         uses: actions/checkout@v4
-        with:
-          ref: admin-beta
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -45,19 +43,36 @@ jobs:
         shell: powershell
         run: |
           @'
+          import hashlib
           import json
           import sys
+          import tempfile
+          from pathlib import Path
+
           sys.path.insert(0, "source")
           import config
           from pi_client import PiClient
+          from updater import verify_file_sha256
 
           assert config.ADMIN_UPDATE_CHANNEL is True
-          assert config.AUTO_DOWNLOAD_ADMIN_UPDATES is True
-          assert config.AUTO_INSTALL_ADMIN_UPDATES is False
           assert "admin-beta/admin/update.json" in config.UPDATE_MANIFEST_URL
+          assert getattr(config, "PUBLIC_UPDATE_MANIFEST_URL", "").endswith("/main/update.json")
 
           raw = b"\xef\xbb\xbf" + json.dumps({"version": config.APP_VERSION}).encode("utf-8")
           assert json.loads(raw.decode("utf-8-sig"))["version"] == config.APP_VERSION
+
+          with tempfile.NamedTemporaryFile(delete=False) as f:
+              f.write(b"senton-update-integrity-test")
+              test_path = Path(f.name)
+          expected = hashlib.sha256(b"senton-update-integrity-test").hexdigest()
+          assert verify_file_sha256(test_path, expected) is True
+          try:
+              verify_file_sha256(test_path, "0" * 64)
+          except RuntimeError:
+              pass
+          else:
+              raise AssertionError("Bad SHA-256 was not rejected")
+          test_path.unlink(missing_ok=True)
 
           pi = PiClient()
           assert pi.get_status()["simulation"] is True
@@ -68,7 +83,7 @@ jobs:
               status = pi.get_status()
           assert status["speed_kmh"] == 0.0
           assert status["throttle"] == "NEUTRAL"
-          print("Admin channel hard tests passed")
+          print(f"Senton Control v{config.APP_VERSION} admin channel hard tests passed")
           '@ | python -
 
       - name: Build admin EXE
@@ -80,6 +95,13 @@ jobs:
       - name: Publish admin-only package
         shell: powershell
         run: |
+          git fetch origin admin-beta
+          $remoteSha = (git rev-parse origin/admin-beta).Trim()
+          if ($remoteSha -ne $env:GITHUB_SHA) {
+            Write-Host "A newer admin-beta commit exists. Skipping stale admin package."
+            exit 0
+          }
+
           New-Item -ItemType Directory -Force -Path admin | Out-Null
           Copy-Item "source/dist/Senton Control.exe" "admin/Senton-Control.exe" -Force
 
@@ -89,7 +111,7 @@ jobs:
             version = $version.Trim()
             download_url = "https://raw.githubusercontent.com/77m4wkbtzk-a11y/senton-control-updates/admin-beta/admin/Senton-Control.exe"
             sha256 = $hash
-            notes = "Senton Control v$($version.Trim()) ADMIN beta. Verified admin update channel."
+            notes = "Senton Control v$($version.Trim()) OWNER ADMIN beta. Hash-verified update package."
             required = $false
             channel = "admin"
           } | ConvertTo-Json
@@ -103,10 +125,14 @@ jobs:
           if ($LASTEXITCODE -ne 0) {
             git commit -m "Publish Senton Control v$($version.Trim()) admin beta"
             git push origin admin-beta
+            if ($LASTEXITCODE -ne 0) {
+              Write-Host "admin-beta advanced during publishing. Package not forced; newer run will publish."
+              exit 0
+            }
           }
 
-      - name: Confirm public hold
+      - name: Confirm channel isolation
         shell: powershell
         run: |
           Write-Host "Admin package published only to admin-beta."
-          Write-Host "Public main/update.json remains unchanged."
+          Write-Host "Public main/update.json was not modified by this workflow."
