@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 import subprocess
@@ -21,16 +22,41 @@ def _version_tuple(version):
         return (0,)
 
 
+def _fetch_manifest(url):
+    req = urllib.request.Request(url, headers={"User-Agent": "Senton-Control-Updater"})
+    with urllib.request.urlopen(req, timeout=8) as response:
+        return json.loads(response.read().decode("utf-8-sig"))
+
+
+def _normalize_sha256(value):
+    value = str(value or "").strip().lower()
+    if len(value) != 64 or any(ch not in "0123456789abcdef" for ch in value):
+        return ""
+    return value
+
+
+def verify_file_sha256(path, expected_sha256):
+    expected = _normalize_sha256(expected_sha256)
+    if not expected:
+        raise ValueError("Update is missing a valid SHA-256 integrity value.")
+
+    digest = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            digest.update(chunk)
+
+    if digest.hexdigest().lower() != expected:
+        raise RuntimeError("Update integrity check failed. Installation blocked.")
+    return True
+
+
 def check_for_update(current_version):
     url = getattr(config, "UPDATE_MANIFEST_URL", "").strip()
     if not url:
         return {"ok": False, "reason": "Update server is not configured yet."}
 
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "Senton-Control-Updater"})
-        with urllib.request.urlopen(req, timeout=8) as response:
-            manifest = json.loads(response.read().decode("utf-8-sig"))
-
+        manifest = _fetch_manifest(url)
         latest = str(manifest.get("version", "0.0.0"))
         return {
             "ok": True,
@@ -46,9 +72,26 @@ def check_for_update(current_version):
         return {"ok": False, "reason": str(exc)}
 
 
-def download_update(download_url):
+def download_update(download_url, expected_sha256=""):
     if not download_url.lower().startswith("https://"):
         raise ValueError("Update downloads must use HTTPS.")
+
+    expected = ""
+    if expected_sha256:
+        expected = _normalize_sha256(expected_sha256)
+        if not expected:
+            raise ValueError("Update is missing a valid SHA-256 integrity value.")
+    else:
+        manifest_url = getattr(config, "UPDATE_MANIFEST_URL", "").strip()
+        if not manifest_url:
+            raise RuntimeError("Cannot verify update because the update manifest is not configured.")
+        manifest = _fetch_manifest(manifest_url)
+        manifest_download_url = str(manifest.get("download_url", "")).strip()
+        if manifest_download_url != download_url:
+            raise RuntimeError("Update download does not match the current verified manifest.")
+        expected = _normalize_sha256(manifest.get("sha256", ""))
+        if not expected:
+            raise RuntimeError("Update manifest is missing a valid SHA-256 integrity value.")
 
     target = Path(tempfile.gettempdir()) / "Senton_Control_Update.exe"
     req = urllib.request.Request(download_url, headers={"User-Agent": "Senton-Control-Updater"})
@@ -60,7 +103,14 @@ def download_update(download_url):
             f.write(chunk)
 
     if not target.exists() or target.stat().st_size < 1024 * 1024:
+        target.unlink(missing_ok=True)
         raise RuntimeError("Downloaded update file is missing or unexpectedly small.")
+
+    try:
+        verify_file_sha256(target, expected)
+    except Exception:
+        target.unlink(missing_ok=True)
+        raise
     return target
 
 
