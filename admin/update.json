@@ -1,7 +1,7 @@
 {
     "version":  "1.2.3",
     "channel":  "admin",
-    "sha256":  "4b008d07c2084d713919a9452b350688c0d653d55027b0bf9379d8fe4dbc3f7e",
+    "sha256":  "4d5ca6af1144ef29bb4b72f0cf11afef6e34e799fc14e9272eef55e604d517b3",
     "required":  false,
     "download_url":  "https://raw.githubusercontent.com/77m4wkbtzk-a11y/senton-control-updates/admin-beta/admin/Senton-Control.exe",
     "notes":  "Senton Control v1.2.3 ADMIN beta. Verified admin update channel."
