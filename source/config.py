@@ -4,7 +4,8 @@ APP_VERSION = "1.2.3"
 # Admin-only beta update channel. The public main/update.json remains on hold.
 UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/77m4wkbtzk-a11y/senton-control-updates/admin-beta/admin/update.json"
 ADMIN_UPDATE_CHANNEL = True
-AUTO_INSTALL_ADMIN_UPDATES = True
+AUTO_DOWNLOAD_ADMIN_UPDATES = True
+AUTO_INSTALL_ADMIN_UPDATES = False
 
 PI_HOST = "192.168.1.50"
 PI_PORT = 8765
