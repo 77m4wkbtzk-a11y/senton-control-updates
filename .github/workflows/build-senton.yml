@@ -50,12 +50,10 @@ jobs:
 
           assert config.APP_VERSION == "1.2.3", config.APP_VERSION
 
-          # BOM-tolerant manifest parsing test.
           raw = b"\xef\xbb\xbf" + json.dumps({"version": "1.2.3"}).encode("utf-8")
           manifest = json.loads(raw.decode("utf-8-sig"))
           assert manifest["version"] == "1.2.3"
 
-          # Simulation state/command tests.
           pi = PiClient()
           status = pi.get_status()
           assert status["simulation"] is True
@@ -91,9 +89,41 @@ jobs:
           cd source
           python -m PyInstaller --clean --noconfirm --noconsole --onefile --name "Senton Control" main.py
 
-      - name: Release hold
+      - name: Publish verified v1.2.3 package
         shell: powershell
         run: |
-          Write-Host "Senton Control release HOLD is active."
-          Write-Host "Build and hard tests may complete, but this workflow will not publish the EXE or update.json."
-          Write-Host "Live updater remains unchanged until the release hold is removed."
+          git fetch origin main
+          $remoteSha = (git rev-parse origin/main).Trim()
+          if ($remoteSha -ne $env:GITHUB_SHA) {
+            Write-Host "A newer main commit exists. Skipping stale package."
+            exit 0
+          }
+
+          New-Item -ItemType Directory -Force -Path releases | Out-Null
+          Copy-Item "source/dist/Senton Control.exe" "releases/Senton-Control.exe" -Force
+
+          $version = python -c "import sys; sys.path.insert(0, 'source'); import config; print(config.APP_VERSION)"
+          $hash = (Get-FileHash "releases/Senton-Control.exe" -Algorithm SHA256).Hash.ToLower()
+          $manifest = @{
+            version = $version.Trim()
+            download_url = "https://raw.githubusercontent.com/77m4wkbtzk-a11y/senton-control-updates/main/releases/Senton-Control.exe"
+            notes = "Senton Control v$($version.Trim()) beta update. Hard-tested build with updater BOM fix and AI simulation."
+            required = $false
+            sha256 = $hash
+            channel = "public"
+          } | ConvertTo-Json
+          $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+          [System.IO.File]::WriteAllText((Join-Path $PWD "update.json"), $manifest, $utf8NoBom)
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add releases/Senton-Control.exe update.json
+          git diff --cached --quiet
+          if ($LASTEXITCODE -ne 0) {
+            git commit -m "Publish verified Senton Control v$($version.Trim()) package"
+            git push origin main
+            if ($LASTEXITCODE -ne 0) {
+              Write-Host "Main advanced during publishing. Package not forced; newer run will publish."
+              exit 0
+            }
+          }
