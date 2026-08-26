@@ -1,5 +1,5 @@
 APP_NAME = "Senton Control"
-APP_VERSION = "1.2.2"
+APP_VERSION = "1.2.3"
 
 # Senton Control online update manifest
 UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/77m4wkbtzk-a11y/senton-control-updates/main/update.json"
