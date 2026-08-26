@@ -3,6 +3,7 @@ name: Build Senton Control
 on:
   push:
     paths:
+      - 'source/**'
       - '.github/workflows/build-senton.yml'
   workflow_dispatch:
 
@@ -48,9 +49,7 @@ jobs:
           git add releases/Senton-Control.exe
           git diff --cached --quiet
           if ($LASTEXITCODE -ne 0) {
-            git commit -m "Build Senton Control v1.2.1"
+            git commit -m "Build Senton Control beta"
             git pull --rebase origin main
             git push origin main
           }
-
-# v1.2.1 publish fix
