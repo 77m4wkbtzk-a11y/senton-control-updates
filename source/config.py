@@ -1,12 +1,14 @@
 APP_NAME = "Senton Control"
-APP_VERSION = "1.2.3"
+APP_VERSION = "1.2.4"
 
-# Admin-only beta update channel. The public main/update.json remains on hold.
+# Owner-admin beta channel. This build also watches the public manifest for
+# owner-admin-compatible packages without replacing itself with the public EXE.
 UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/77m4wkbtzk-a11y/senton-control-updates/admin-beta/admin/update.json"
+ADMIN_UPDATE_MANIFEST_URL = UPDATE_MANIFEST_URL
 PUBLIC_UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/77m4wkbtzk-a11y/senton-control-updates/main/update.json"
 ADMIN_UPDATE_CHANNEL = True
 AUTO_DOWNLOAD_ADMIN_UPDATES = True
-AUTO_INSTALL_ADMIN_UPDATES = False
+AUTO_INSTALL_ADMIN_UPDATES = True
 
 PI_HOST = "192.168.1.50"
 PI_PORT = 8765
