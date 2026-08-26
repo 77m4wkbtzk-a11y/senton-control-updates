@@ -1,8 +1,10 @@
 APP_NAME = "Senton Control"
 APP_VERSION = "1.2.3"
 
-# Senton Control online update manifest
-UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/77m4wkbtzk-a11y/senton-control-updates/main/update.json"
+# Admin-only beta update channel. The public main/update.json remains on hold.
+UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/77m4wkbtzk-a11y/senton-control-updates/admin-beta/admin/update.json"
+ADMIN_UPDATE_CHANNEL = True
+AUTO_INSTALL_ADMIN_UPDATES = True
 
 PI_HOST = "192.168.1.50"
 PI_PORT = 8765
