@@ -1,7 +1,7 @@
 {
     "version":  "1.2.4",
     "channel":  "admin",
-    "sha256":  "bbd2c1597be7f816f6c8a9a2da8e8034315ba4b4f1f0a5d9b5e06aca9feb3896",
+    "sha256":  "b432315fbcfa0a29c954b501dbe42f2408fb2af011ed93ae9e09eb9f7fbaab2b",
     "required":  false,
     "download_url":  "https://raw.githubusercontent.com/77m4wkbtzk-a11y/senton-control-updates/admin-beta/admin/Senton-Control.exe",
     "notes":  "Senton Control v1.2.4 OWNER ADMIN beta. Hash-verified update package."
