@@ -10,6 +10,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: senton-control-beta-publish
+  cancel-in-progress: false
+
 jobs:
   build-windows:
     runs-on: windows-latest
@@ -33,6 +37,55 @@ jobs:
         run: |
           python -m py_compile source/main.py source/config.py source/pi_client.py source/updater.py source/dashboard.py
 
+      - name: Hard test simulation and updater
+        shell: powershell
+        run: |
+          @'
+          import json
+          import sys
+          import time
+          sys.path.insert(0, "source")
+
+          import config
+          from pi_client import PiClient
+
+          assert config.APP_VERSION == "1.2.3", config.APP_VERSION
+
+          # BOM-tolerant manifest parsing test.
+          raw = b"\xef\xbb\xbf" + json.dumps({"version": "1.2.3"}).encode("utf-8")
+          manifest = json.loads(raw.decode("utf-8-sig"))
+          assert manifest["version"] == "1.2.3"
+
+          # Simulation state/command tests.
+          pi = PiClient()
+          status = pi.get_status()
+          assert status["simulation"] is True
+          assert status["simulation_type"] == "AI"
+          assert status["speed_kmh"] == 0.0
+
+          pi.send_command("demo")
+          moving = False
+          for _ in range(12):
+              status = pi.get_status()
+              if status["speed_kmh"] > 0:
+                  moving = True
+          assert moving, "Demo simulation never accelerated"
+
+          pi.send_command("stop")
+          for _ in range(20):
+              status = pi.get_status()
+          assert status["speed_kmh"] == 0.0
+          assert status["throttle"] == "NEUTRAL"
+
+          pi.send_command("return_home")
+          before = pi.distance_home
+          for _ in range(10):
+              status = pi.get_status()
+          assert pi.distance_home <= before
+
+          print("Senton Control v1.2.3 hard tests passed")
+          '@ | python -
+
       - name: Build EXE
         shell: powershell
         run: |
@@ -42,6 +95,14 @@ jobs:
       - name: Publish beta update
         shell: powershell
         run: |
+          # Never let an older build overwrite a newer source commit.
+          git fetch origin main
+          $remoteSha = (git rev-parse origin/main).Trim()
+          if ($remoteSha -ne $env:GITHUB_SHA) {
+            Write-Host "A newer source commit exists. Skipping this stale build; the newer workflow run will publish it."
+            exit 0
+          }
+
           New-Item -ItemType Directory -Force -Path releases | Out-Null
           Copy-Item "source/dist/Senton Control.exe" "releases/Senton-Control.exe" -Force
 
@@ -49,7 +110,7 @@ jobs:
           $manifest = @{
             version = $version.Trim()
             download_url = "https://raw.githubusercontent.com/77m4wkbtzk-a11y/senton-control-updates/main/releases/Senton-Control.exe"
-            notes = "Senton Control v$($version.Trim()) beta update. Latest successful beta build."
+            notes = "Senton Control v$($version.Trim()) beta update. Hard-tested successful beta build."
             required = $false
           } | ConvertTo-Json
           $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
@@ -61,6 +122,9 @@ jobs:
           git diff --cached --quiet
           if ($LASTEXITCODE -ne 0) {
             git commit -m "Publish Senton Control v$($version.Trim()) beta"
-            git pull --rebase origin main
             git push origin main
+            if ($LASTEXITCODE -ne 0) {
+              Write-Host "Main advanced during publishing. Skipping stale output; a newer run will publish instead."
+              exit 0
+            }
           }
