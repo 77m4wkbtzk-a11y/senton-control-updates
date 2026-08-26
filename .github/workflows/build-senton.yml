@@ -43,7 +43,6 @@ jobs:
           @'
           import json
           import sys
-          import time
           sys.path.insert(0, "source")
 
           import config
@@ -92,39 +91,9 @@ jobs:
           cd source
           python -m PyInstaller --clean --noconfirm --noconsole --onefile --name "Senton Control" main.py
 
-      - name: Publish beta update
+      - name: Release hold
         shell: powershell
         run: |
-          # Never let an older build overwrite a newer source commit.
-          git fetch origin main
-          $remoteSha = (git rev-parse origin/main).Trim()
-          if ($remoteSha -ne $env:GITHUB_SHA) {
-            Write-Host "A newer source commit exists. Skipping this stale build; the newer workflow run will publish it."
-            exit 0
-          }
-
-          New-Item -ItemType Directory -Force -Path releases | Out-Null
-          Copy-Item "source/dist/Senton Control.exe" "releases/Senton-Control.exe" -Force
-
-          $version = python -c "import sys; sys.path.insert(0, 'source'); import config; print(config.APP_VERSION)"
-          $manifest = @{
-            version = $version.Trim()
-            download_url = "https://raw.githubusercontent.com/77m4wkbtzk-a11y/senton-control-updates/main/releases/Senton-Control.exe"
-            notes = "Senton Control v$($version.Trim()) beta update. Hard-tested successful beta build."
-            required = $false
-          } | ConvertTo-Json
-          $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
-          [System.IO.File]::WriteAllText((Join-Path $PWD "update.json"), $manifest, $utf8NoBom)
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add releases/Senton-Control.exe update.json
-          git diff --cached --quiet
-          if ($LASTEXITCODE -ne 0) {
-            git commit -m "Publish Senton Control v$($version.Trim()) beta"
-            git push origin main
-            if ($LASTEXITCODE -ne 0) {
-              Write-Host "Main advanced during publishing. Skipping stale output; a newer run will publish instead."
-              exit 0
-            }
-          }
+          Write-Host "Senton Control release HOLD is active."
+          Write-Host "Build and hard tests may complete, but this workflow will not publish the EXE or update.json."
+          Write-Host "Live updater remains unchanged until the release hold is removed."
