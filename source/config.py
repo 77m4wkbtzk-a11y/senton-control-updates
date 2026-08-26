@@ -1,8 +1,11 @@
 APP_NAME = "Senton Control"
-APP_VERSION = "1.2.3"
+APP_VERSION = "1.2.4"
 
-# Senton Control online update manifest
+# Senton Control online update manifests. The normal app uses the public
+# manifest; the owner-admin flavor can safely watch both channels.
 UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/77m4wkbtzk-a11y/senton-control-updates/main/update.json"
+PUBLIC_UPDATE_MANIFEST_URL = UPDATE_MANIFEST_URL
+ADMIN_UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/77m4wkbtzk-a11y/senton-control-updates/admin-beta/admin/update.json"
 
 PI_HOST = "192.168.1.50"
 PI_PORT = 8765
