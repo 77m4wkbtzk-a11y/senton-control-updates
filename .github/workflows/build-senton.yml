@@ -35,24 +35,40 @@ jobs:
       - name: Validate source
         shell: powershell
         run: |
-          python -m py_compile source/main.py source/config.py source/pi_client.py source/updater.py source/dashboard.py
+          python -m py_compile source/admin_main.py source/main.py source/config.py source/pi_client.py source/updater.py source/dashboard.py
 
       - name: Hard test simulation and updater
         shell: powershell
         run: |
           @'
+          import hashlib
           import json
           import sys
+          import tempfile
+          from pathlib import Path
+
           sys.path.insert(0, "source")
 
           import config
           from pi_client import PiClient
+          from updater import verify_file_sha256
 
-          assert config.APP_VERSION == "1.2.3", config.APP_VERSION
-
-          raw = b"\xef\xbb\xbf" + json.dumps({"version": "1.2.3"}).encode("utf-8")
+          raw = b"\xef\xbb\xbf" + json.dumps({"version": config.APP_VERSION}).encode("utf-8")
           manifest = json.loads(raw.decode("utf-8-sig"))
-          assert manifest["version"] == "1.2.3"
+          assert manifest["version"] == config.APP_VERSION
+
+          with tempfile.NamedTemporaryFile(delete=False) as f:
+              f.write(b"senton-update-integrity-test")
+              test_path = Path(f.name)
+          expected = hashlib.sha256(b"senton-update-integrity-test").hexdigest()
+          assert verify_file_sha256(test_path, expected) is True
+          try:
+              verify_file_sha256(test_path, "0" * 64)
+          except RuntimeError:
+              pass
+          else:
+              raise AssertionError("Bad SHA-256 was not rejected")
+          test_path.unlink(missing_ok=True)
 
           pi = PiClient()
           status = pi.get_status()
@@ -80,16 +96,22 @@ jobs:
               status = pi.get_status()
           assert pi.distance_home <= before
 
-          print("Senton Control v1.2.3 hard tests passed")
+          print(f"Senton Control v{config.APP_VERSION} hard tests passed")
           '@ | python -
 
-      - name: Build EXE
+      - name: Build public EXE
         shell: powershell
         run: |
           cd source
           python -m PyInstaller --clean --noconfirm --noconsole --onefile --name "Senton Control" main.py
 
-      - name: Publish verified v1.2.3 package
+      - name: Build owner admin EXE
+        shell: powershell
+        run: |
+          cd source
+          python -m PyInstaller --clean --noconfirm --noconsole --onefile --name "Senton Control Owner Admin" admin_main.py
+
+      - name: Publish verified beta packages
         shell: powershell
         run: |
           git fetch origin main
@@ -101,15 +123,19 @@ jobs:
 
           New-Item -ItemType Directory -Force -Path releases | Out-Null
           Copy-Item "source/dist/Senton Control.exe" "releases/Senton-Control.exe" -Force
+          Copy-Item "source/dist/Senton Control Owner Admin.exe" "releases/Senton-Control-Owner-Admin.exe" -Force
 
           $version = python -c "import sys; sys.path.insert(0, 'source'); import config; print(config.APP_VERSION)"
           $hash = (Get-FileHash "releases/Senton-Control.exe" -Algorithm SHA256).Hash.ToLower()
+          $adminHash = (Get-FileHash "releases/Senton-Control-Owner-Admin.exe" -Algorithm SHA256).Hash.ToLower()
           $manifest = @{
             version = $version.Trim()
             download_url = "https://raw.githubusercontent.com/77m4wkbtzk-a11y/senton-control-updates/main/releases/Senton-Control.exe"
-            notes = "Senton Control v$($version.Trim()) beta update. Hard-tested build with updater BOM fix and AI simulation."
-            required = $false
             sha256 = $hash
+            owner_admin_download_url = "https://raw.githubusercontent.com/77m4wkbtzk-a11y/senton-control-updates/main/releases/Senton-Control-Owner-Admin.exe"
+            owner_admin_sha256 = $adminHash
+            notes = "Senton Control v$($version.Trim()) beta update. Hash-verified public and owner-admin packages."
+            required = $false
             channel = "public"
           } | ConvertTo-Json
           $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
@@ -117,10 +143,10 @@ jobs:
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add releases/Senton-Control.exe update.json
+          git add releases/Senton-Control.exe releases/Senton-Control-Owner-Admin.exe update.json
           git diff --cached --quiet
           if ($LASTEXITCODE -ne 0) {
-            git commit -m "Publish verified Senton Control v$($version.Trim()) package"
+            git commit -m "Publish verified Senton Control v$($version.Trim()) beta packages"
             git push origin main
             if ($LASTEXITCODE -ne 0) {
               Write-Host "Main advanced during publishing. Package not forced; newer run will publish."
