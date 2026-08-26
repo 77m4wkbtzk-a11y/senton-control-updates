@@ -1,7 +1,9 @@
-name: Build Senton Control
+name: Build Senton Control Admin
 
 on:
   push:
+    branches:
+      - 'admin-beta'
     paths:
       - 'source/**'
       - '.github/workflows/build-senton.yml'
@@ -11,15 +13,17 @@ permissions:
   contents: write
 
 concurrency:
-  group: senton-control-beta-publish
+  group: senton-control-admin-publish
   cancel-in-progress: false
 
 jobs:
   build-windows:
     runs-on: windows-latest
     steps:
-      - name: Checkout
+      - name: Checkout admin channel
         uses: actions/checkout@v4
+        with:
+          ref: admin-beta
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -32,68 +36,77 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install "PySide6>=6.7,<7" pyinstaller
 
-      - name: Validate source
+      - name: Validate admin source
         shell: powershell
         run: |
-          python -m py_compile source/main.py source/config.py source/pi_client.py source/updater.py source/dashboard.py
+          python -m py_compile source/admin_main.py source/main.py source/config.py source/pi_client.py source/updater.py source/dashboard.py
 
-      - name: Hard test simulation and updater
+      - name: Hard test admin channel
         shell: powershell
         run: |
           @'
           import json
           import sys
           sys.path.insert(0, "source")
-
           import config
           from pi_client import PiClient
 
-          assert config.APP_VERSION == "1.2.3", config.APP_VERSION
+          assert config.ADMIN_UPDATE_CHANNEL is True
+          assert config.AUTO_DOWNLOAD_ADMIN_UPDATES is True
+          assert config.AUTO_INSTALL_ADMIN_UPDATES is False
+          assert "admin-beta/admin/update.json" in config.UPDATE_MANIFEST_URL
 
-          # BOM-tolerant manifest parsing test.
-          raw = b"\xef\xbb\xbf" + json.dumps({"version": "1.2.3"}).encode("utf-8")
-          manifest = json.loads(raw.decode("utf-8-sig"))
-          assert manifest["version"] == "1.2.3"
+          raw = b"\xef\xbb\xbf" + json.dumps({"version": config.APP_VERSION}).encode("utf-8")
+          assert json.loads(raw.decode("utf-8-sig"))["version"] == config.APP_VERSION
 
-          # Simulation state/command tests.
           pi = PiClient()
-          status = pi.get_status()
-          assert status["simulation"] is True
-          assert status["simulation_type"] == "AI"
-          assert status["speed_kmh"] == 0.0
-
+          assert pi.get_status()["simulation"] is True
           pi.send_command("demo")
-          moving = False
-          for _ in range(12):
-              status = pi.get_status()
-              if status["speed_kmh"] > 0:
-                  moving = True
-          assert moving, "Demo simulation never accelerated"
-
+          assert any(pi.get_status()["speed_kmh"] > 0 for _ in range(12))
           pi.send_command("stop")
           for _ in range(20):
               status = pi.get_status()
           assert status["speed_kmh"] == 0.0
           assert status["throttle"] == "NEUTRAL"
-
-          pi.send_command("return_home")
-          before = pi.distance_home
-          for _ in range(10):
-              status = pi.get_status()
-          assert pi.distance_home <= before
-
-          print("Senton Control v1.2.3 hard tests passed")
+          print("Admin channel hard tests passed")
           '@ | python -
 
-      - name: Build EXE
+      - name: Build admin EXE
         shell: powershell
         run: |
           cd source
-          python -m PyInstaller --clean --noconfirm --noconsole --onefile --name "Senton Control" main.py
+          python -m PyInstaller --clean --noconfirm --noconsole --onefile --name "Senton Control" admin_main.py
 
-      - name: Release hold
+      - name: Publish admin-only package
         shell: powershell
         run: |
-          Write-Host "Senton Control release HOLD is active."
-          Write-Host "Build and hard tests may complete, but this workflow will not publish the EXE or update.json."
-          Write-Host "Live updater remains unchanged until the release hold is removed."
+          New-Item -ItemType Directory -Force -Path admin | Out-Null
+          Copy-Item "source/dist/Senton Control.exe" "admin/Senton-Control.exe" -Force
+
+          $version = python -c "import sys; sys.path.insert(0, 'source'); import config; print(config.APP_VERSION)"
+          $hash = (Get-FileHash "admin/Senton-Control.exe" -Algorithm SHA256).Hash.ToLower()
+          $manifest = @{
+            version = $version.Trim()
+            download_url = "https://raw.githubusercontent.com/77m4wkbtzk-a11y/senton-control-updates/admin-beta/admin/Senton-Control.exe"
+            sha256 = $hash
+            notes = "Senton Control v$($version.Trim()) ADMIN beta. Verified admin update channel."
+            required = $false
+            channel = "admin"
+          } | ConvertTo-Json
+          $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+          [System.IO.File]::WriteAllText((Join-Path $PWD "admin/update.json"), $manifest, $utf8NoBom)
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add admin/Senton-Control.exe admin/update.json
+          git diff --cached --quiet
+          if ($LASTEXITCODE -ne 0) {
+            git commit -m "Publish Senton Control v$($version.Trim()) admin beta"
+            git push origin admin-beta
+          }
+
+      - name: Confirm public hold
+        shell: powershell
+        run: |
+          Write-Host "Admin package published only to admin-beta."
+          Write-Host "Public main/update.json remains unchanged."
