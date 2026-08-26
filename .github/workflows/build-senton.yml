@@ -1,0 +1,55 @@
+name: Build Senton Control
+
+on:
+  push:
+    paths:
+      - 'source_v1.2.1.zip'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Extract source
+        shell: powershell
+        run: |
+          if (Test-Path buildsrc) { Remove-Item buildsrc -Recurse -Force }
+          Expand-Archive -Path source_v1.2.1.zip -DestinationPath buildsrc -Force
+
+      - name: Install dependencies
+        shell: powershell
+        run: |
+          cd buildsrc/senton_dashboard
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt pyinstaller
+
+      - name: Build EXE
+        shell: powershell
+        run: |
+          cd buildsrc/senton_dashboard
+          python -m PyInstaller --clean --noconfirm --noconsole --onefile --name "Senton Control" main.py
+
+      - name: Publish update executable
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force -Path releases | Out-Null
+          Copy-Item "buildsrc/senton_dashboard/dist/Senton Control.exe" "releases/Senton-Control.exe" -Force
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add releases/Senton-Control.exe
+          git diff --cached --quiet
+          if ($LASTEXITCODE -ne 0) {
+            git commit -m "Build Senton Control v1.2.1"
+            git push
+          }
