@@ -3,7 +3,7 @@ from PySide6.QtWidgets import QApplication
 from dashboard import SentonDashboard
 from updater import cleanup_expired_backup
 
-APP_VERSION = "1.2.2"
+APP_VERSION = "1.2.3"
 
 if __name__ == "__main__":
     cleanup_expired_backup()
