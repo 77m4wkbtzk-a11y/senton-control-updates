@@ -52,7 +52,8 @@ jobs:
             notes = "Senton Control v$($version.Trim()) beta update. Latest successful beta build."
             required = $false
           } | ConvertTo-Json
-          Set-Content -Path "update.json" -Value $manifest -Encoding utf8
+          $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+          [System.IO.File]::WriteAllText((Join-Path $PWD "update.json"), $manifest, $utf8NoBom)
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
