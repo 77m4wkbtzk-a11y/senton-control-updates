@@ -3,7 +3,7 @@ name: Build Senton Control
 on:
   push:
     paths:
-      - 'build-trigger.txt'
+      - '.github/workflows/build-senton.yml'
   workflow_dispatch:
 
 permissions:
@@ -53,3 +53,5 @@ jobs:
             git commit -m "Build Senton Control v1.2.1"
             git push
           }
+
+# v1.2.1 build trigger
