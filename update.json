@@ -1,8 +1,10 @@
 {
-    "version":  "1.2.3",
-    "channel":  "public",
-    "sha256":  "c5c0fb2c2cfd03f7f160a44203cf53c61ebb49d7388baac7dad8ce113df5030f",
-    "required":  false,
+    "version":  "1.2.4",
+    "owner_admin_sha256":  "893b7f62e39b09bb78841303d6ef5387e4a54795cd8bf227ba20f39936ff5569",
     "download_url":  "https://raw.githubusercontent.com/77m4wkbtzk-a11y/senton-control-updates/main/releases/Senton-Control.exe",
-    "notes":  "Senton Control v1.2.3 beta update. Hard-tested build with updater BOM fix and AI simulation."
+    "channel":  "public",
+    "required":  false,
+    "owner_admin_download_url":  "https://raw.githubusercontent.com/77m4wkbtzk-a11y/senton-control-updates/main/releases/Senton-Control-Owner-Admin.exe",
+    "notes":  "Senton Control v1.2.4 beta update. Hash-verified public and owner-admin packages.",
+    "sha256":  "fe65e74fda84d1da1e22b4d42d4909e12fd6b480183f7923d10e28f2cadff4e3"
 }
