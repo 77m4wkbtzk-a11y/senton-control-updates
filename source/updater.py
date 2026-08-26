@@ -29,7 +29,7 @@ def check_for_update(current_version):
     try:
         req = urllib.request.Request(url, headers={"User-Agent": "Senton-Control-Updater"})
         with urllib.request.urlopen(req, timeout=8) as response:
-            manifest = json.loads(response.read().decode("utf-8"))
+            manifest = json.loads(response.read().decode("utf-8-sig"))
 
         latest = str(manifest.get("version", "0.0.0"))
         return {
