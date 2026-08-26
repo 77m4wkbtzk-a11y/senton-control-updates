@@ -1,10 +1,10 @@
 {
     "version":  "1.2.4",
-    "owner_admin_sha256":  "893b7f62e39b09bb78841303d6ef5387e4a54795cd8bf227ba20f39936ff5569",
+    "owner_admin_sha256":  "116c9f0393d0e124d012a90e374e7d11c4697025d55cc43b18b1b6b99def47bf",
     "download_url":  "https://raw.githubusercontent.com/77m4wkbtzk-a11y/senton-control-updates/main/releases/Senton-Control.exe",
     "channel":  "public",
     "required":  false,
     "owner_admin_download_url":  "https://raw.githubusercontent.com/77m4wkbtzk-a11y/senton-control-updates/main/releases/Senton-Control-Owner-Admin.exe",
     "notes":  "Senton Control v1.2.4 beta update. Hash-verified public and owner-admin packages.",
-    "sha256":  "fe65e74fda84d1da1e22b4d42d4909e12fd6b480183f7923d10e28f2cadff4e3"
+    "sha256":  "a48c1d87c48845f1ae420018f3f459474b3f6609feb51a5888169d1267ec15a0"
 }
