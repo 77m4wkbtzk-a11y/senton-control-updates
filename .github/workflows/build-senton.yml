@@ -35,9 +35,9 @@ jobs:
       - name: Validate source
         shell: powershell
         run: |
-          python -m py_compile source/admin_main.py source/main.py source/config.py source/pi_client.py source/updater.py source/progress_updater.py source/dashboard.py source/cleanup.py source/privacy_guard.py source/universal_updater_ui.py
+          python -m py_compile source/admin_main.py source/main.py source/config.py source/pi_client.py source/updater.py source/progress_updater.py source/dashboard.py source/cleanup.py source/privacy_guard.py source/missing_person.py source/universal_updater_ui.py
 
-      - name: Hard test simulation updater old-update cleanup and Privacy Guard
+      - name: Hard test simulation updater old-update cleanup Privacy Guard and Missing Person Assistance
         shell: powershell
         run: |
           @'
@@ -54,11 +54,13 @@ jobs:
           import progress_updater
           import universal_updater_ui
           from cleanup import cleanup_obsolete_update_artifacts, DIST_ARTIFACT_NAMES, TEMP_ARTIFACT_NAMES
+          from missing_person import MissingPersonCase, MissingPersonDatabase, VehicleOfInterest
           from pi_client import PiClient
           from privacy_guard import PrivacyGuard
           from updater import verify_file_sha256
 
-          assert config.APP_VERSION == "1.2.11", f"Unexpected build version: {config.APP_VERSION}"
+          assert config.APP_VERSION == "1.2.12", f"Unexpected build version: {config.APP_VERSION}"
+          assert config.PRIVACY_GUARD_RELEASE_READY is True
           assert hasattr(universal_updater_ui, "install_universal_update_button")
           fast_params = list(inspect.signature(progress_updater.download_update_with_progress).parameters)
           assert fast_params == ["download_url", "expected_sha256", "progress_callback"], fast_params
@@ -74,7 +76,8 @@ jobs:
               dist.mkdir(parents=True)
 
               active_exe = dist / "Senton Control.exe"
-              active_exe.write_bytes(b"ACTIVE-1.2.11")
+              active_payload = f"ACTIVE-{config.APP_VERSION}".encode("utf-8")
+              active_exe.write_bytes(active_payload)
               unrelated = dist / "keep-me.txt"
               unrelated.write_text("keep", encoding="utf-8")
 
@@ -86,7 +89,7 @@ jobs:
               removed = cleanup_obsolete_update_artifacts(install_root, temp_root)
               assert len(removed) == len(DIST_ARTIFACT_NAMES) + len(TEMP_ARTIFACT_NAMES)
               assert active_exe.exists()
-              assert active_exe.read_bytes() == b"ACTIVE-1.2.11"
+              assert active_exe.read_bytes() == active_payload
               assert unrelated.exists()
               assert cleanup_obsolete_update_artifacts(install_root, temp_root) == []
 
@@ -127,6 +130,31 @@ jobs:
           assert guard.locked is True
           assert private_event.evidence_path is None
 
+          with tempfile.TemporaryDirectory() as db_root:
+              db = MissingPersonDatabase(Path(db_root) / "missing-person-cases.json")
+              case = MissingPersonCase(
+                  case_id="TEST-001",
+                  name="Test Person",
+                  age=30,
+                  last_seen="TEST",
+                  last_known_area="Adelaide",
+                  vehicle=VehicleOfInterest(rego="S123 ABC", make_model="Test Vehicle"),
+              )
+              db.upsert_case(case)
+              assert len(db.active_cases()) == 1
+              rego_matches = db.match_case_vehicle_rego("s123-abc")
+              assert len(rego_matches) == 1
+              assert rego_matches[0]["case_id"] == "TEST-001"
+              assert rego_matches[0]["status"] == "PENDING_HUMAN_REVIEW"
+              sighting = db.add_possible_sighting(
+                  "TEST-001",
+                  "TEST LOCATION",
+                  notes="simulation only",
+                  sighting_type="PERSON",
+              )
+              assert sighting["status"] == "PENDING_HUMAN_REVIEW"
+              assert len(db.sightings_for_case("TEST-001")) == 1
+
           pi = PiClient()
           status = pi.get_status()
           assert status["simulation"] is True
@@ -153,7 +181,7 @@ jobs:
               status = pi.get_status()
           assert pi.distance_home <= before
 
-          print(f"Senton Control v{config.APP_VERSION} hard tests passed, including fast updater baseline")
+          print(f"Senton Control v{config.APP_VERSION} hard tests passed, including Privacy Guard, updater integrity and Missing Person Assistance core")
           '@ | python -
 
       - name: Build public EXE
@@ -197,7 +225,7 @@ jobs:
             sha256 = $hash
             owner_admin_download_url = "https://raw.githubusercontent.com/77m4wkbtzk-a11y/senton-control-updates/main/releases/Senton-Control-Owner-Admin.exe"
             owner_admin_sha256 = $adminHash
-            notes = "Senton Control v$($version.Trim()) fast universal updater baseline: fresh live checks, immediate background download, progress and SHA-256 verification."
+            notes = "Senton Control v$($version.Trim()) verified update: Privacy Guard, Missing Person Assistance core, fast download progress and SHA-256 integrity verification."
             required = $false
             channel = "public"
           } | ConvertTo-Json
