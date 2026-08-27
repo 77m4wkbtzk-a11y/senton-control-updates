@@ -14,6 +14,8 @@ concurrency:
   group: senton-control-updater-fix-publish
   cancel-in-progress: false
 
+# Manual release trigger after final hard-fire pass.
+
 jobs:
   build-windows:
     runs-on: windows-latest
