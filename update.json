@@ -1,10 +1,10 @@
 {
     "version":  "1.2.10",
-    "owner_admin_sha256":  "2b6c8ebe45f5004082661f5aaca2321a72193a2feb3fa380f1d770ab1161b39b",
+    "owner_admin_sha256":  "9e773adf02277e8efc01c1431e1c413f67ba35be913e90d379e9a402a64ee80b",
     "download_url":  "https://raw.githubusercontent.com/77m4wkbtzk-a11y/senton-control-updates/main/releases/Senton-Control.exe",
     "channel":  "public",
     "required":  false,
     "owner_admin_download_url":  "https://raw.githubusercontent.com/77m4wkbtzk-a11y/senton-control-updates/main/releases/Senton-Control-Owner-Admin.exe",
     "notes":  "Senton Control v1.2.10 in-app update handoff and restart repair with Privacy Guard baseline.",
-    "sha256":  "ac690313308684bcf5a8023908455013d18113883880d39b259bc82e4fbcaeeb"
+    "sha256":  "20a420a8bc9fc450bc83280ecf5e5f5a17966898e922399334c12fc3d65c6372"
 }
