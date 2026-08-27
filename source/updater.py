@@ -169,72 +169,135 @@ def cleanup_expired_backup():
     return False
 
 
+def _ps_literal(value):
+    return "'" + str(value).replace("'", "''") + "'"
+
+
 def install_update_to_main_desktop(downloaded_exe):
-    """Replace the exact running Senton Control EXE using a fast detached helper."""
-    downloaded_exe = Path(downloaded_exe)
+    """Reliably replace the exact running Senton Control EXE using a detached PowerShell helper."""
+    downloaded_exe = Path(downloaded_exe).resolve()
     if not downloaded_exe.exists():
         raise FileNotFoundError(f"Downloaded update was not found: {downloaded_exe}")
 
-    main_exe = _current_app_exe()
+    main_exe = _current_app_exe().resolve()
     backup_exe, backup_marker = _backup_paths(main_exe)
     main_exe.parent.mkdir(parents=True, exist_ok=True)
 
-    bat_path = Path(tempfile.gettempdir()) / "senton_control_apply_update.bat"
+    temp_dir = Path(tempfile.gettempdir())
+    helper_path = temp_dir / "senton_control_apply_update.ps1"
+    log_path = temp_dir / "senton_control_update.log"
+    status_path = temp_dir / "senton_control_update.status"
     current_pid = os.getpid()
 
-    commands = [
-        "@echo off",
-        "setlocal EnableExtensions",
-        "title Senton Control Updater",
-        "echo Installing Senton Control update...",
-        "",
-        "rem Short grace period, then close only the current Senton process.",
-        "timeout /t 1 /nobreak >nul",
-        f'tasklist /FI "PID eq {current_pid}" 2>NUL | find "{current_pid}" >NUL',
-        "if not errorlevel 1 (",
-        f'  taskkill /PID {current_pid} /T /F >nul 2>&1',
-        ")",
-        "",
-        "rem Give Windows one moment to release the executable handle.",
-        "timeout /t 1 /nobreak >nul",
-        f'if exist "{backup_exe}" del /q "{backup_exe}" >nul 2>&1',
-        f'if exist "{backup_marker}" del /q "{backup_marker}" >nul 2>&1',
-        f'if exist "{main_exe}" copy /y "{main_exe}" "{backup_exe}" >nul',
-        "if errorlevel 1 goto update_failed",
-        f'powershell -NoProfile -Command "[IO.File]::WriteAllText(\'{backup_marker}\', [string]([DateTimeOffset]::UtcNow.ToUnixTimeSeconds()))"',
-        "",
-        "set RETRIES=0",
-        ":replace_retry",
-        f'copy /y "{downloaded_exe}" "{main_exe}" >nul 2>&1',
-        "if not errorlevel 1 goto replace_ok",
-        "set /a RETRIES+=1",
-        "if %RETRIES% GEQ 8 goto update_failed",
-        "timeout /t 1 /nobreak >nul",
-        "goto replace_retry",
-        "",
-        ":replace_ok",
-        f'if not exist "{main_exe}" goto update_failed',
-        f'for %%I in ("{main_exe}") do if %%~zI LSS 1048576 goto update_failed',
-        f'start "" explorer.exe "{main_exe}"',
-        f'del /q "{downloaded_exe}" >nul 2>&1',
-        'del "%~f0"',
-        "exit /b 0",
-        "",
-        ":update_failed",
-        "echo Senton Control update failed. Restoring previous version...",
-        f'if exist "{backup_exe}" copy /y "{backup_exe}" "{main_exe}" >nul 2>&1',
-        f'if exist "{main_exe}" start "" explorer.exe "{main_exe}"',
-        "pause",
-        "exit /b 1",
-    ]
+    q_main = _ps_literal(main_exe)
+    q_download = _ps_literal(downloaded_exe)
+    q_backup = _ps_literal(backup_exe)
+    q_marker = _ps_literal(backup_marker)
+    q_log = _ps_literal(log_path)
+    q_status = _ps_literal(status_path)
 
-    bat_path.write_text("\r\n".join(commands), encoding="utf-8")
-    subprocess.Popen(
-        ["cmd.exe", "/c", str(bat_path)],
-        creationflags=(
-            getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
-            | getattr(subprocess, "DETACHED_PROCESS", 0)
-        ),
+    script = f"""
+$ErrorActionPreference = 'Stop'
+$pidToWait = {current_pid}
+$mainExe = {q_main}
+$downloadedExe = {q_download}
+$backupExe = {q_backup}
+$backupMarker = {q_marker}
+$logFile = {q_log}
+$statusFile = {q_status}
+
+function Write-SentonLog([string]$message) {{
+    $stamp = [DateTimeOffset]::Now.ToString('yyyy-MM-dd HH:mm:ss zzz')
+    Add-Content -LiteralPath $logFile -Value ("$stamp $message") -Encoding UTF8
+}}
+
+try {{
+    Remove-Item -LiteralPath $statusFile -Force -ErrorAction SilentlyContinue
+    Write-SentonLog 'Updater helper started.'
+
+    for ($i = 0; $i -lt 40; $i++) {{
+        if (-not (Get-Process -Id $pidToWait -ErrorAction SilentlyContinue)) {{ break }}
+        Start-Sleep -Milliseconds 250
+    }}
+
+    if (Get-Process -Id $pidToWait -ErrorAction SilentlyContinue) {{
+        Write-SentonLog 'App did not exit in time; forcing only the current Senton process closed.'
+        Stop-Process -Id $pidToWait -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Milliseconds 750
+    }}
+
+    if (Test-Path -LiteralPath $backupExe) {{ Remove-Item -LiteralPath $backupExe -Force }}
+    if (Test-Path -LiteralPath $backupMarker) {{ Remove-Item -LiteralPath $backupMarker -Force }}
+
+    if (Test-Path -LiteralPath $mainExe) {{
+        Copy-Item -LiteralPath $mainExe -Destination $backupExe -Force
+        [IO.File]::WriteAllText($backupMarker, [string]([DateTimeOffset]::UtcNow.ToUnixTimeSeconds()))
+        Write-SentonLog 'Previous executable backed up.'
+    }}
+
+    $installed = $false
+    for ($attempt = 1; $attempt -le 12; $attempt++) {{
+        try {{
+            Copy-Item -LiteralPath $downloadedExe -Destination $mainExe -Force
+            if ((Test-Path -LiteralPath $mainExe) -and ((Get-Item -LiteralPath $mainExe).Length -ge 1048576)) {{
+                $installed = $true
+                break
+            }}
+        }} catch {{
+            Write-SentonLog ("Replacement attempt $attempt failed: " + $_.Exception.Message)
+        }}
+        Start-Sleep -Milliseconds 750
+    }}
+
+    if (-not $installed) {{ throw 'Could not replace the Senton Control executable.' }}
+
+    Write-SentonLog 'New executable installed. Restarting Senton Control.'
+    Set-Content -LiteralPath $statusFile -Value 'success' -Encoding ASCII
+    Start-Process -FilePath $mainExe -WorkingDirectory (Split-Path -Parent $mainExe)
+    Remove-Item -LiteralPath $downloadedExe -Force -ErrorAction SilentlyContinue
+}} catch {{
+    Write-SentonLog ('Update failed: ' + $_.Exception.Message)
+    Set-Content -LiteralPath $statusFile -Value ('failed: ' + $_.Exception.Message) -Encoding UTF8
+    if (Test-Path -LiteralPath $backupExe) {{
+        Copy-Item -LiteralPath $backupExe -Destination $mainExe -Force -ErrorAction SilentlyContinue
+        Write-SentonLog 'Previous executable restored.'
+    }}
+    if (Test-Path -LiteralPath $mainExe) {{
+        Start-Process -FilePath $mainExe -WorkingDirectory (Split-Path -Parent $mainExe) -ErrorAction SilentlyContinue
+    }}
+    exit 1
+}}
+""".strip()
+
+    helper_path.write_text(script, encoding="utf-8")
+    log_path.unlink(missing_ok=True)
+    status_path.unlink(missing_ok=True)
+
+    creationflags = (
+        getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+        | getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    )
+    proc = subprocess.Popen(
+        [
+            "powershell.exe",
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-WindowStyle",
+            "Hidden",
+            "-File",
+            str(helper_path),
+        ],
+        creationflags=creationflags,
         close_fds=True,
     )
+
+    time.sleep(0.25)
+    return_code = proc.poll()
+    if return_code is not None and return_code != 0:
+        raise RuntimeError(
+            f"The Senton update installer could not start (code {return_code}). "
+            f"Diagnostic log: {log_path}"
+        )
     return True
