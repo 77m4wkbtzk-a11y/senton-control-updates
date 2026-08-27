@@ -35,7 +35,7 @@ jobs:
       - name: Validate source
         shell: powershell
         run: |
-          python -m py_compile source/admin_main.py source/main.py source/config.py source/pi_client.py source/updater.py source/installer_no_relaunch.py source/progress_updater.py source/dashboard.py source/cleanup.py source/privacy_guard.py source/missing_person.py source/universal_updater_ui.py
+          python -m py_compile source/admin_main.py source/main.py source/config.py source/pi_client.py source/updater.py source/installer_no_relaunch.py source/progress_updater.py source/dashboard.py source/cleanup.py source/privacy_guard.py source/missing_person.py source/missing_person_camera.py source/universal_updater_ui.py
 
       - name: Hard test simulation updater old-update cleanup Privacy Guard and Missing Person Assistance
         shell: powershell
@@ -56,6 +56,7 @@ jobs:
           import universal_updater_ui
           from cleanup import cleanup_obsolete_update_artifacts, DIST_ARTIFACT_NAMES, TEMP_ARTIFACT_NAMES
           from missing_person import MissingPersonCase, MissingPersonDatabase, VehicleOfInterest
+          from missing_person_camera import MissingPersonCameraAssist
           from pi_client import PiClient
           from privacy_guard import PrivacyGuard
           from updater import verify_file_sha256
@@ -143,19 +144,32 @@ jobs:
                   vehicle=VehicleOfInterest(rego="S123 ABC", make_model="Test Vehicle"),
               )
               db.upsert_case(case)
-              assert len(db.active_cases()) == 1
-              rego_matches = db.match_case_vehicle_rego("s123-abc")
-              assert len(rego_matches) == 1
-              assert rego_matches[0]["case_id"] == "TEST-001"
-              assert rego_matches[0]["status"] == "PENDING_HUMAN_REVIEW"
-              sighting = db.add_possible_sighting(
+              camera = MissingPersonCameraAssist(db)
+
+              person = camera.record_person_observation(
                   "TEST-001",
                   "TEST LOCATION",
-                  notes="simulation only",
-                  sighting_type="PERSON",
+                  evidence_path="evidence/person.jpg",
               )
-              assert sighting["status"] == "PENDING_HUMAN_REVIEW"
-              assert len(db.sightings_for_case("TEST-001")) == 1
+              assert person["type"] == "PERSON"
+              assert person["status"] == "PENDING_HUMAN_REVIEW"
+
+              vehicle_records = camera.process_vehicle_observation(
+                  "s123-abc",
+                  "TEST ROAD",
+                  evidence_path="evidence/vehicle.jpg",
+                  make_model="Test Vehicle",
+                  colour="Blue",
+              )
+              assert len(vehicle_records) == 1
+              vehicle_sighting = vehicle_records[0]
+              assert vehicle_sighting["type"] == "VEHICLE"
+              assert vehicle_sighting["status"] == "PENDING_HUMAN_REVIEW"
+              packet = camera.sapol_review_packet(db.get_case("TEST-001"), vehicle_sighting)
+              assert packet["case_id"] == "TEST-001"
+              assert packet["observed_rego"] == "S123ABC"
+              assert packet["review_required"] is True
+              assert packet["identity_decision"] == "NOT_AUTOMATED"
 
           pi = PiClient()
           status = pi.get_status()
@@ -183,20 +197,20 @@ jobs:
               status = pi.get_status()
           assert pi.distance_home <= before
 
-          print(f"Senton Control v{config.APP_VERSION} hard tests passed, including verified install handoff with automatic relaunch disabled")
+          print(f"Senton Control v{config.APP_VERSION} hard tests passed, including no-relaunch updater and human-reviewed missing-person camera assistance")
           '@ | python -
 
       - name: Build public EXE
         shell: powershell
         run: |
           cd source
-          python -m PyInstaller --clean --noconfirm --noconsole --onefile --hidden-import missing_person --name "Senton Control" main.py
+          python -m PyInstaller --clean --noconfirm --noconsole --onefile --hidden-import missing_person --hidden-import missing_person_camera --name "Senton Control" main.py
 
       - name: Build owner admin EXE
         shell: powershell
         run: |
           cd source
-          python -m PyInstaller --clean --noconfirm --noconsole --onefile --hidden-import missing_person --name "Senton Control Owner Admin" admin_main.py
+          python -m PyInstaller --clean --noconfirm --noconsole --onefile --hidden-import missing_person --hidden-import missing_person_camera --name "Senton Control Owner Admin" admin_main.py
 
       - name: Publish verified beta packages
         shell: powershell
@@ -227,7 +241,7 @@ jobs:
             sha256 = $hash
             owner_admin_download_url = "https://raw.githubusercontent.com/77m4wkbtzk-a11y/senton-control-updates/main/releases/Senton-Control-Owner-Admin.exe"
             owner_admin_sha256 = $adminHash
-            notes = "Senton Control v$($version.Trim()) verified update: fast progress download, SHA-256 verification and automatic EXE installation. Automatic relaunch is disabled after install."
+            notes = "Senton Control v$($version.Trim()) verified update: fast progress download, SHA-256 verification, no automatic relaunch, Privacy Guard, and human-reviewed Missing Person camera/vehicle assistance."
             required = $false
             channel = "public"
           } | ConvertTo-Json
