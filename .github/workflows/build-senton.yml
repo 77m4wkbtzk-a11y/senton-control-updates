@@ -35,7 +35,7 @@ jobs:
       - name: Validate source
         shell: powershell
         run: |
-          python -m py_compile source/admin_main.py source/main.py source/config.py source/pi_client.py source/updater.py source/dashboard.py source/cleanup.py source/privacy_guard.py source/universal_updater_ui.py
+          python -m py_compile source/admin_main.py source/main.py source/config.py source/pi_client.py source/updater.py source/progress_updater.py source/dashboard.py source/cleanup.py source/privacy_guard.py source/universal_updater_ui.py
 
       - name: Hard test simulation updater old-update cleanup and Privacy Guard
         shell: powershell
@@ -51,6 +51,7 @@ jobs:
           sys.path.insert(0, "source")
 
           import config
+          import progress_updater
           import universal_updater_ui
           from cleanup import cleanup_obsolete_update_artifacts, DIST_ARTIFACT_NAMES, TEMP_ARTIFACT_NAMES
           from pi_client import PiClient
@@ -59,6 +60,9 @@ jobs:
 
           assert config.APP_VERSION == "1.2.11", f"Unexpected build version: {config.APP_VERSION}"
           assert hasattr(universal_updater_ui, "install_universal_update_button")
+          fast_params = list(inspect.signature(progress_updater.download_update_with_progress).parameters)
+          assert fast_params == ["download_url", "expected_sha256", "progress_callback"], fast_params
+          assert progress_updater.DOWNLOAD_CHUNK_SIZE >= 8 * 1024 * 1024
           raw = b"\xef\xbb\xbf" + json.dumps({"version": config.APP_VERSION}).encode("utf-8")
           manifest = json.loads(raw.decode("utf-8-sig"))
           assert manifest["version"] == config.APP_VERSION
@@ -149,7 +153,7 @@ jobs:
               status = pi.get_status()
           assert pi.distance_home <= before
 
-          print(f"Senton Control v{config.APP_VERSION} hard tests passed")
+          print(f"Senton Control v{config.APP_VERSION} hard tests passed, including fast updater baseline")
           '@ | python -
 
       - name: Build public EXE
@@ -193,7 +197,7 @@ jobs:
             sha256 = $hash
             owner_admin_download_url = "https://raw.githubusercontent.com/77m4wkbtzk-a11y/senton-control-updates/main/releases/Senton-Control-Owner-Admin.exe"
             owner_admin_sha256 = $adminHash
-            notes = "Senton Control v$($version.Trim()) updater UI revision: progress download and verification, then close the old app without automatic EXE replacement or restart."
+            notes = "Senton Control v$($version.Trim()) fast universal updater baseline: fresh live checks, immediate background download, progress and SHA-256 verification."
             required = $false
             channel = "public"
           } | ConvertTo-Json
