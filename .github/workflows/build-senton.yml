@@ -35,7 +35,7 @@ jobs:
       - name: Validate source
         shell: powershell
         run: |
-          python -m py_compile source/admin_main.py source/main.py source/config.py source/pi_client.py source/updater.py source/progress_updater.py source/dashboard.py source/cleanup.py source/privacy_guard.py source/missing_person.py source/universal_updater_ui.py
+          python -m py_compile source/admin_main.py source/main.py source/config.py source/pi_client.py source/updater.py source/installer_no_relaunch.py source/progress_updater.py source/dashboard.py source/cleanup.py source/privacy_guard.py source/missing_person.py source/universal_updater_ui.py
 
       - name: Hard test simulation updater old-update cleanup Privacy Guard and Missing Person Assistance
         shell: powershell
@@ -51,19 +51,19 @@ jobs:
           sys.path.insert(0, "source")
 
           import config
+          import installer_no_relaunch
           import progress_updater
           import universal_updater_ui
-          import updater
           from cleanup import cleanup_obsolete_update_artifacts, DIST_ARTIFACT_NAMES, TEMP_ARTIFACT_NAMES
           from missing_person import MissingPersonCase, MissingPersonDatabase, VehicleOfInterest
           from pi_client import PiClient
           from privacy_guard import PrivacyGuard
           from updater import verify_file_sha256
 
-          assert config.APP_VERSION == "1.2.12.1", f"Unexpected build version: {config.APP_VERSION}"
+          assert config.APP_VERSION == "1.2.12.2", f"Unexpected build version: {config.APP_VERSION}"
           assert config.PRIVACY_GUARD_RELEASE_READY is True
           assert hasattr(universal_updater_ui, "install_universal_update_button")
-          assert hasattr(updater, "install_update_to_main_desktop")
+          assert hasattr(installer_no_relaunch, "install_update_no_relaunch")
           fast_params = list(inspect.signature(progress_updater.download_update_with_progress).parameters)
           assert fast_params == ["download_url", "expected_sha256", "progress_callback"], fast_params
           assert progress_updater.DOWNLOAD_CHUNK_SIZE >= 8 * 1024 * 1024
@@ -183,7 +183,7 @@ jobs:
               status = pi.get_status()
           assert pi.distance_home <= before
 
-          print(f"Senton Control v{config.APP_VERSION} hard tests passed, including verified install handoff and automatic relaunch support")
+          print(f"Senton Control v{config.APP_VERSION} hard tests passed, including verified install handoff with automatic relaunch disabled")
           '@ | python -
 
       - name: Build public EXE
@@ -227,7 +227,7 @@ jobs:
             sha256 = $hash
             owner_admin_download_url = "https://raw.githubusercontent.com/77m4wkbtzk-a11y/senton-control-updates/main/releases/Senton-Control-Owner-Admin.exe"
             owner_admin_sha256 = $adminHash
-            notes = "Senton Control v$($version.Trim()) verified update: fast progress download, SHA-256 verification, automatic EXE installation and relaunch after install."
+            notes = "Senton Control v$($version.Trim()) verified update: fast progress download, SHA-256 verification and automatic EXE installation. Automatic relaunch is disabled after install."
             required = $false
             channel = "public"
           } | ConvertTo-Json
