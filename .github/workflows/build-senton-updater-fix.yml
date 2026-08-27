@@ -1,0 +1,172 @@
+name: Build Senton Control Updater Fix
+
+on:
+  push:
+    paths:
+      - 'source/**'
+      - '.github/workflows/build-senton-updater-fix.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: senton-control-updater-fix-publish
+  cancel-in-progress: false
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        shell: powershell
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "PySide6>=6.7,<7" pyinstaller
+
+      - name: Validate source
+        shell: powershell
+        run: |
+          python -m py_compile source/admin_main.py source/main.py source/config.py source/pi_client.py source/updater.py source/installer_relaunch.py source/progress_updater.py source/dashboard.py source/cleanup.py source/privacy_guard.py source/missing_person.py source/missing_person_camera.py source/universal_updater_ui.py
+
+      - name: Hard test updater integrity Privacy Guard and Missing Person Assistance
+        shell: powershell
+        run: |
+          @'
+          import hashlib
+          import inspect
+          import sys
+          import tempfile
+          from pathlib import Path
+
+          sys.path.insert(0, "source")
+          import config
+          import installer_relaunch
+          import universal_updater_ui
+          from missing_person import MissingPersonCase, MissingPersonDatabase, VehicleOfInterest
+          from missing_person_camera import MissingPersonCameraAssist
+          from privacy_guard import PrivacyGuard
+          from updater import verify_file_sha256
+
+          assert config.APP_VERSION == "1.2.12.3"
+          assert config.PRIVACY_GUARD_RELEASE_READY is True
+          assert hasattr(installer_relaunch, "install_update_and_relaunch")
+          assert hasattr(universal_updater_ui, "install_universal_update_button")
+
+          installer_source = inspect.getsource(installer_relaunch.install_update_and_relaunch)
+          assert "Get-FileHash" in installer_source
+          assert "Start-Process" in installer_source
+          assert "backup" in installer_source.lower()
+          assert "success-relaunched" in installer_source
+
+          ui_source = inspect.getsource(universal_updater_ui.install_universal_update_button)
+          assert "restart automatically" in ui_source
+          assert "install_update_and_relaunch" in ui_source
+
+          with tempfile.NamedTemporaryFile(delete=False) as f:
+              f.write(b"senton-update-integrity-test")
+              test_path = Path(f.name)
+          expected = hashlib.sha256(b"senton-update-integrity-test").hexdigest()
+          assert verify_file_sha256(test_path, expected) is True
+          try:
+              verify_file_sha256(test_path, "0" * 64)
+          except RuntimeError:
+              pass
+          else:
+              raise AssertionError("Bad SHA-256 was not rejected")
+          test_path.unlink(missing_ok=True)
+
+          guard = PrivacyGuard()
+          assert guard.camera_name == "Main Camera"
+          assert guard.sign_is_restricted("STAFF TOILET") is True
+          event = guard.trigger_from_sign("TOILET", "evidence/exterior-door.jpg")
+          assert guard.locked is True
+          assert event.evidence_path and event.evidence_path.endswith("exterior-door.jpg")
+          assert guard.authorise_phone_unlock(False) is False
+          assert guard.authorise_phone_unlock(True) is True
+
+          with tempfile.TemporaryDirectory() as db_root:
+              db = MissingPersonDatabase(Path(db_root) / "missing-person-cases.json")
+              case = MissingPersonCase(
+                  case_id="TEST-001",
+                  name="Test Person",
+                  age=30,
+                  last_seen="TEST",
+                  last_known_area="Adelaide",
+                  vehicle=VehicleOfInterest(rego="S123 ABC", make_model="Test Vehicle"),
+              )
+              db.upsert_case(case)
+              camera = MissingPersonCameraAssist(db)
+              records = camera.process_vehicle_observation(
+                  "s123-abc", "TEST ROAD", evidence_path="evidence/vehicle.jpg"
+              )
+              assert len(records) == 1
+              assert records[0]["status"] == "PENDING_HUMAN_REVIEW"
+              packet = camera.sapol_review_packet(db.get_case("TEST-001"), records[0])
+              assert packet["observed_rego"] == "S123ABC"
+              assert packet["identity_decision"] == "NOT_AUTOMATED"
+
+          print("Senton Control v1.2.12.3 hard tests passed")
+          '@ | python -
+
+      - name: Build public EXE
+        shell: powershell
+        run: |
+          cd source
+          python -m PyInstaller --clean --noconfirm --noconsole --onefile --hidden-import missing_person --hidden-import missing_person_camera --hidden-import installer_relaunch --name "Senton Control" main.py
+
+      - name: Build owner admin EXE
+        shell: powershell
+        run: |
+          cd source
+          python -m PyInstaller --clean --noconfirm --noconsole --onefile --hidden-import missing_person --hidden-import missing_person_camera --hidden-import installer_relaunch --name "Senton Control Owner Admin" admin_main.py
+
+      - name: Publish verified updater fix
+        shell: powershell
+        run: |
+          $releaseReady = python -c "import sys; sys.path.insert(0, 'source'); import config; print('true' if getattr(config, 'PRIVACY_GUARD_RELEASE_READY', False) else 'false')"
+          if ($releaseReady.Trim() -ne 'true') { exit 1 }
+
+          git fetch origin main
+          $remoteSha = (git rev-parse origin/main).Trim()
+          if ($remoteSha -ne $env:GITHUB_SHA) {
+            Write-Host "A newer main commit exists. Skipping stale package."
+            exit 0
+          }
+
+          New-Item -ItemType Directory -Force -Path releases | Out-Null
+          Copy-Item "source/dist/Senton Control.exe" "releases/Senton-Control.exe" -Force
+          Copy-Item "source/dist/Senton Control Owner Admin.exe" "releases/Senton-Control-Owner-Admin.exe" -Force
+
+          $version = python -c "import sys; sys.path.insert(0, 'source'); import config; print(config.APP_VERSION)"
+          $hash = (Get-FileHash "releases/Senton-Control.exe" -Algorithm SHA256).Hash.ToLower()
+          $adminHash = (Get-FileHash "releases/Senton-Control-Owner-Admin.exe" -Algorithm SHA256).Hash.ToLower()
+          $manifest = @{
+            version = $version.Trim()
+            download_url = "https://raw.githubusercontent.com/77m4wkbtzk-a11y/senton-control-updates/main/releases/Senton-Control.exe"
+            sha256 = $hash
+            owner_admin_download_url = "https://raw.githubusercontent.com/77m4wkbtzk-a11y/senton-control-updates/main/releases/Senton-Control-Owner-Admin.exe"
+            owner_admin_sha256 = $adminHash
+            notes = "Senton Control v$($version.Trim()) updater fix: verified download, verified replacement, automatic restart, backup/rollback protection, Privacy Guard, and human-reviewed Missing Person camera/vehicle assistance."
+            required = $false
+            channel = "public"
+          } | ConvertTo-Json
+          $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+          [System.IO.File]::WriteAllText((Join-Path $PWD "update.json"), $manifest, $utf8NoBom)
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add releases/Senton-Control.exe releases/Senton-Control-Owner-Admin.exe update.json
+          git diff --cached --quiet
+          if ($LASTEXITCODE -ne 0) {
+            git commit -m "Publish verified Senton Control v$($version.Trim()) updater fix"
+            git push origin main
+          }
