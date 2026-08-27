@@ -35,9 +35,9 @@ jobs:
       - name: Validate source
         shell: powershell
         run: |
-          python -m py_compile source/admin_main.py source/main.py source/config.py source/pi_client.py source/updater.py source/dashboard.py
+          python -m py_compile source/admin_main.py source/main.py source/config.py source/pi_client.py source/updater.py source/dashboard.py source/cleanup.py
 
-      - name: Hard test simulation and updater
+      - name: Hard test simulation updater and old-update cleanup
         shell: powershell
         run: |
           @'
@@ -50,13 +50,49 @@ jobs:
           sys.path.insert(0, "source")
 
           import config
+          from cleanup import cleanup_obsolete_update_artifacts, DIST_ARTIFACT_NAMES, TEMP_ARTIFACT_NAMES
           from pi_client import PiClient
           from updater import verify_file_sha256
 
+          # Single authoritative version value must be the expected build.
+          assert config.APP_VERSION == "1.2.7", f"Unexpected build version: {config.APP_VERSION}"
           raw = b"\xef\xbb\xbf" + json.dumps({"version": config.APP_VERSION}).encode("utf-8")
           manifest = json.loads(raw.decode("utf-8-sig"))
           assert manifest["version"] == config.APP_VERSION
 
+          # Verify old-update cleanup in isolated fake install/temp folders.
+          with tempfile.TemporaryDirectory() as install_root, tempfile.TemporaryDirectory() as temp_root:
+              install_root = Path(install_root)
+              temp_root = Path(temp_root)
+              dist = install_root / "dist"
+              dist.mkdir(parents=True)
+
+              active_exe = dist / "Senton Control.exe"
+              active_exe.write_bytes(b"ACTIVE-1.2.7")
+              unrelated = dist / "keep-me.txt"
+              unrelated.write_text("keep", encoding="utf-8")
+
+              for name in DIST_ARTIFACT_NAMES:
+                  (dist / name).write_bytes(b"obsolete")
+              for name in TEMP_ARTIFACT_NAMES:
+                  (temp_root / name).write_bytes(b"obsolete")
+
+              removed = cleanup_obsolete_update_artifacts(install_root, temp_root)
+              assert len(removed) == len(DIST_ARTIFACT_NAMES) + len(TEMP_ARTIFACT_NAMES)
+              assert active_exe.exists(), "Cleanup deleted the active Senton Control.exe"
+              assert active_exe.read_bytes() == b"ACTIVE-1.2.7"
+              assert unrelated.exists(), "Cleanup deleted an unrelated file"
+              for name in DIST_ARTIFACT_NAMES:
+                  assert not (dist / name).exists(), f"Old dist artifact survived: {name}"
+              for name in TEMP_ARTIFACT_NAMES:
+                  assert not (temp_root / name).exists(), f"Old temp artifact survived: {name}"
+
+              # Cleanup must be safe/idempotent on repeated launches.
+              assert cleanup_obsolete_update_artifacts(install_root, temp_root) == []
+              assert active_exe.exists()
+              assert unrelated.exists()
+
+          # Verify update integrity enforcement.
           with tempfile.NamedTemporaryFile(delete=False) as f:
               f.write(b"senton-update-integrity-test")
               test_path = Path(f.name)
@@ -70,6 +106,7 @@ jobs:
               raise AssertionError("Bad SHA-256 was not rejected")
           test_path.unlink(missing_ok=True)
 
+          # Existing simulation safety checks.
           pi = PiClient()
           status = pi.get_status()
           assert status["simulation"] is True
@@ -96,7 +133,7 @@ jobs:
               status = pi.get_status()
           assert pi.distance_home <= before
 
-          print(f"Senton Control v{config.APP_VERSION} hard tests passed")
+          print(f"Senton Control v{config.APP_VERSION} hard tests passed, including old-update cleanup")
           '@ | python -
 
       - name: Build public EXE
@@ -134,7 +171,7 @@ jobs:
             sha256 = $hash
             owner_admin_download_url = "https://raw.githubusercontent.com/77m4wkbtzk-a11y/senton-control-updates/main/releases/Senton-Control-Owner-Admin.exe"
             owner_admin_sha256 = $adminHash
-            notes = "Senton Control v$($version.Trim()) beta update. Hash-verified public and owner-admin packages."
+            notes = "Senton Control v$($version.Trim()) beta update. Verified build with old-update cleanup; obsolete Senton updater/rollback artifacts are removed after the new version starts."
             required = $false
             channel = "public"
           } | ConvertTo-Json
