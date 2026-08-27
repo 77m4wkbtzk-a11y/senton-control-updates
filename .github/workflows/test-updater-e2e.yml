@@ -1,0 +1,76 @@
+name: Test Senton Updater End to End
+
+on:
+  push:
+    paths:
+      - 'tests/update_smoke_old.py'
+      - 'tests/update_smoke_new.py'
+      - 'source/installer_relaunch.py'
+      - '.github/workflows/test-updater-e2e.yml'
+  workflow_dispatch:
+
+jobs:
+  updater-e2e:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+
+      - name: Install PyInstaller
+        shell: powershell
+        run: python -m pip install --upgrade pyinstaller
+
+      - name: Build old updater harness
+        shell: powershell
+        run: |
+          python -m PyInstaller --clean --noconfirm --onefile --paths source --hidden-import installer_relaunch --name "Senton Control" tests/update_smoke_old.py
+
+      - name: Build replacement harness
+        shell: powershell
+        run: |
+          python -m PyInstaller --clean --noconfirm --onefile --name "Senton Replacement" tests/update_smoke_new.py
+
+      - name: Run real replace verify relaunch smoke test
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = Join-Path $PWD 'smoke-install'
+          New-Item -ItemType Directory -Force -Path $root | Out-Null
+          $current = Join-Path $root 'Senton Control.exe'
+          $downloaded = Join-Path $root 'Senton Replacement.exe'
+          Copy-Item (Join-Path $PWD 'dist\Senton Control.exe') $current -Force
+          Copy-Item (Join-Path $PWD 'dist\Senton Replacement.exe') $downloaded -Force
+
+          $expectedHash = (Get-FileHash -LiteralPath $downloaded -Algorithm SHA256).Hash.ToLowerInvariant()
+          $statusFile = Join-Path $env:TEMP 'senton_control_update.status'
+          $markerFile = Join-Path $env:TEMP 'senton_update_smoke_new_started.txt'
+          Remove-Item $statusFile,$markerFile -Force -ErrorAction SilentlyContinue
+
+          $proc = Start-Process -FilePath $current -ArgumentList @($downloaded) -PassThru
+          $proc.WaitForExit()
+          if ($proc.ExitCode -ne 0) { throw "Old updater harness exited with code $($proc.ExitCode)" }
+
+          $deadline = (Get-Date).AddSeconds(30)
+          while ((Get-Date) -lt $deadline) {
+            if ((Test-Path $statusFile) -and (Test-Path $markerFile)) { break }
+            Start-Sleep -Milliseconds 250
+          }
+
+          if (-not (Test-Path $statusFile)) { throw 'Updater status file was not created.' }
+          $status = (Get-Content -LiteralPath $statusFile -Raw).Trim()
+          if ($status -ne 'success-relaunched') { throw "Unexpected updater status: $status" }
+          if (-not (Test-Path $markerFile)) { throw 'Replacement EXE did not relaunch and write its startup marker.' }
+          if (-not (Test-Path $current)) { throw 'Updated Senton Control executable is missing.' }
+
+          $actualHash = (Get-FileHash -LiteralPath $current -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actualHash -ne $expectedHash) { throw 'Installed EXE hash does not equal replacement EXE hash.' }
+
+          $backup = Join-Path $root 'Senton Control.backup.exe'
+          if (-not (Test-Path $backup)) { throw 'Updater did not preserve the previous executable backup.' }
+
+          Write-Host 'PASS: frozen EXE closed, backup was made, replacement hash matched, status was success-relaunched, and replacement EXE started.'
