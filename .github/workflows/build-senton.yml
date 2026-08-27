@@ -56,7 +56,7 @@ jobs:
           from privacy_guard import PrivacyGuard
           from updater import verify_file_sha256
 
-          assert config.APP_VERSION == "1.2.11", f"Unexpected build version: {config.APP_VERSION}"
+          assert config.APP_VERSION == "1.2.10", f"Unexpected build version: {config.APP_VERSION}"
           raw = b"\xef\xbb\xbf" + json.dumps({"version": config.APP_VERSION}).encode("utf-8")
           manifest = json.loads(raw.decode("utf-8-sig"))
           assert manifest["version"] == config.APP_VERSION
@@ -68,7 +68,7 @@ jobs:
               dist.mkdir(parents=True)
 
               active_exe = dist / "Senton Control.exe"
-              active_exe.write_bytes(b"ACTIVE-1.2.11")
+              active_exe.write_bytes(b"ACTIVE-1.2.10")
               unrelated = dist / "keep-me.txt"
               unrelated.write_text("keep", encoding="utf-8")
 
@@ -80,7 +80,7 @@ jobs:
               removed = cleanup_obsolete_update_artifacts(install_root, temp_root)
               assert len(removed) == len(DIST_ARTIFACT_NAMES) + len(TEMP_ARTIFACT_NAMES)
               assert active_exe.exists(), "Cleanup deleted the active Senton Control.exe"
-              assert active_exe.read_bytes() == b"ACTIVE-1.2.11"
+              assert active_exe.read_bytes() == b"ACTIVE-1.2.10"
               assert unrelated.exists(), "Cleanup deleted an unrelated file"
               for name in DIST_ARTIFACT_NAMES:
                   assert not (dist / name).exists(), f"Old dist artifact survived: {name}"
