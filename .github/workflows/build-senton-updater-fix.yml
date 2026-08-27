@@ -14,7 +14,7 @@ concurrency:
   group: senton-control-updater-fix-publish
   cancel-in-progress: false
 
-# Manual release trigger after final hard-fire pass.
+# Release gate for the Windows backup-lock fix.
 
 jobs:
   build-windows:
@@ -58,7 +58,7 @@ jobs:
           from privacy_guard import PrivacyGuard
           from updater import verify_file_sha256
 
-          assert config.APP_VERSION == "1.2.12.4"
+          assert config.APP_VERSION == "1.2.12.5"
           assert config.PRIVACY_GUARD_RELEASE_READY is True
           assert hasattr(installer_relaunch, "install_update_and_relaunch")
           assert hasattr(universal_updater_ui, "install_universal_update_button")
@@ -66,8 +66,9 @@ jobs:
           installer_source = inspect.getsource(installer_relaunch.install_update_and_relaunch)
           assert "Get-FileHash" in installer_source
           assert "Start-Process" in installer_source
-          assert "backup" in installer_source.lower()
+          assert "backup_id" in installer_source
           assert "success-relaunched" in installer_source
+          assert "Remove-Item -LiteralPath $backupExe -Force" not in installer_source
 
           ui_source = inspect.getsource(universal_updater_ui.install_universal_update_button)
           assert "restart automatically" in ui_source
@@ -116,7 +117,7 @@ jobs:
               assert packet["observed_rego"] == "S123ABC"
               assert packet["identity_decision"] == "NOT_AUTOMATED"
 
-          print("Senton Control v1.2.12.4 hard tests passed")
+          print("Senton Control v1.2.12.5 hard tests passed")
           '@ | python -
 
       - name: Build public EXE
@@ -157,7 +158,7 @@ jobs:
             sha256 = $hash
             owner_admin_download_url = "https://raw.githubusercontent.com/77m4wkbtzk-a11y/senton-control-updates/main/releases/Senton-Control-Owner-Admin.exe"
             owner_admin_sha256 = $adminHash
-            notes = "Senton Control v$($version.Trim()) updater fix: verified download, verified replacement, automatic restart, backup/rollback protection, Privacy Guard, and human-reviewed Missing Person camera/vehicle assistance."
+            notes = "Senton Control v$($version.Trim()) updater fix: unique rollback backup files, verified download/replacement, automatic restart, Privacy Guard, and human-reviewed Missing Person camera/vehicle assistance."
             required = $false
             channel = "public"
           } | ConvertTo-Json
