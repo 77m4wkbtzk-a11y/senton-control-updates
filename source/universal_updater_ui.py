@@ -5,7 +5,7 @@ from PySide6.QtCore import QThread, Signal
 from PySide6.QtWidgets import QApplication, QMessageBox, QProgressBar
 
 from progress_updater import download_update_with_progress
-from updater import check_for_update, install_update_to_main_desktop
+from updater import check_for_update
 
 
 UPDATE_STATUS_FILE = Path(tempfile.gettempdir()) / "senton_control_update.status"
@@ -42,7 +42,7 @@ def _show_previous_update_result(window):
         window.update_status.setText(
             f"Senton Control v{window.version} started after a successful update."
         )
-        window._log("Previous update completed successfully and Senton Control restarted")
+        window._log("Previous update completed successfully")
         UPDATE_STATUS_FILE.unlink(missing_ok=True)
         return
 
@@ -55,7 +55,7 @@ def _show_previous_update_result(window):
 
 
 def install_universal_update_button(window):
-    """Keep Senton open during download/verification and show 0-100 progress."""
+    """Keep Senton open during download/verification, then close the old app at 100%."""
 
     progress_bar = QProgressBar(window)
     progress_bar.setRange(0, 100)
@@ -111,7 +111,7 @@ def install_universal_update_button(window):
         elif value < 100:
             window.update_status.setText("Download complete. Verifying update integrity…")
         else:
-            window.update_status.setText("Update verified. Preparing final install…")
+            window.update_status.setText("Update downloaded and verified. Closing the old Senton version…")
 
     def update_failed(message):
         progress_bar.setVisible(True)
@@ -123,17 +123,14 @@ def install_universal_update_button(window):
         QMessageBox.critical(window, "Update Failed", message)
 
     def update_downloaded(path):
+        window.downloaded_update_path = path
         progress_bar.setVisible(True)
         progress_bar.setValue(100)
         window.update_status.setText(
-            "Update verified at 100%. Senton Control will close briefly to replace the EXE, then reopen automatically."
+            "Update downloaded and verified at 100%. Closing the old Senton version now."
         )
-        window._log("Update reached 100%; starting final EXE replacement")
-        try:
-            install_update_to_main_desktop(path)
-            QApplication.quit()
-        except Exception as exc:
-            update_failed(str(exc))
+        window._log(f"Update downloaded and verified: {path}; closing old Senton version")
+        QApplication.quit()
 
     def start_download():
         progress_bar.setVisible(True)
@@ -172,8 +169,8 @@ def install_universal_update_button(window):
 
         answer = QMessageBox.question(
             window,
-            "Install Senton Control update",
-            "Download and install the newest Senton Control version now?\n\nSenton Control will stay open during download and verification. It will only close briefly for the final replacement, then reopen automatically."
+            "Download Senton Control update",
+            "Download and verify the newest Senton Control version now?\n\nSenton Control will stay open while it downloads. After verification reaches 100%, the old Senton version will close. The EXE will not be replaced and Senton will not restart automatically."
         )
         if answer != QMessageBox.Yes:
             window.install_update_btn.setEnabled(True)
