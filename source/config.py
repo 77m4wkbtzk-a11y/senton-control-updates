@@ -1,9 +1,9 @@
 APP_NAME = "Senton Control"
-APP_VERSION = "1.2.12.1"
+APP_VERSION = "1.2.12.2"
 
 # APP_VERSION above is the single authoritative version used by the app.
-# v1.2.12.1 restores the verified install handoff and automatic relaunch after
-# the downloaded update has passed SHA-256 verification.
+# v1.2.12.2 keeps the verified install handoff but disables automatic relaunch
+# after the downloaded update has passed SHA-256 verification and is installed.
 UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/77m4wkbtzk-a11y/senton-control-updates/main/update.json"
 PUBLIC_UPDATE_MANIFEST_URL = UPDATE_MANIFEST_URL
 ADMIN_UPDATE_MANIFEST_URL = ""
