@@ -188,13 +188,13 @@ jobs:
         shell: powershell
         run: |
           cd source
-          python -m PyInstaller --clean --noconfirm --noconsole --onefile --name "Senton Control" main.py
+          python -m PyInstaller --clean --noconfirm --noconsole --onefile --hidden-import missing_person --name "Senton Control" main.py
 
       - name: Build owner admin EXE
         shell: powershell
         run: |
           cd source
-          python -m PyInstaller --clean --noconfirm --noconsole --onefile --name "Senton Control Owner Admin" admin_main.py
+          python -m PyInstaller --clean --noconfirm --noconsole --onefile --hidden-import missing_person --name "Senton Control Owner Admin" admin_main.py
 
       - name: Publish verified beta packages
         shell: powershell
