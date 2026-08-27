@@ -1,4 +1,4 @@
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QTimer, QThread, Signal
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QLabel, QPushButton, QFrame, QTextEdit, QProgressBar, QMessageBox
@@ -6,6 +6,21 @@ from PySide6.QtWidgets import (
 
 from pi_client import PiClient
 from updater import check_for_update, download_update, install_update_to_main_desktop
+
+
+class UpdateDownloadThread(QThread):
+    downloaded = Signal(object)
+    failed = Signal(str)
+
+    def __init__(self, url, parent=None):
+        super().__init__(parent)
+        self.url = url
+
+    def run(self):
+        try:
+            self.downloaded.emit(download_update(self.url))
+        except Exception as exc:
+            self.failed.emit(str(exc))
 
 
 class SentonDashboard(QMainWindow):
@@ -22,6 +37,7 @@ class SentonDashboard(QMainWindow):
         self.session_seconds = 0
         self.session_limit = 30 * 60
         self.update_url = ""
+        self.update_thread = None
 
         self.takeover_timer = QTimer(self)
         self.takeover_timer.timeout.connect(self._tick_takeover)
@@ -83,7 +99,6 @@ class SentonDashboard(QMainWindow):
         header.addWidget(self.version_label)
         main.addLayout(header)
 
-        # v1.2.1: permanent safety/status strip.
         strip = QFrame()
         strip.setStyleSheet("QFrame{background:#111419;border:1px solid #30343b;border-radius:8px;}")
         st = QHBoxLayout(strip)
@@ -323,21 +338,38 @@ class SentonDashboard(QMainWindow):
             self.install_update_btn.setEnabled(False)
 
     def install_update(self):
-        if not self.update_url:
+        if not self.update_url or (self.update_thread and self.update_thread.isRunning()):
             return
         answer = QMessageBox.question(
             self,
             "Install Senton Control update",
-            "Download and install the new Senton Control version now?\n\nThe current Desktop EXE will be backed up before replacement."
+            "Download and install the new Senton Control version now?\n\nThe current Senton Control EXE will be backed up before replacement."
         )
         if answer != QMessageBox.Yes:
             return
+
+        self.update_status.setText("Downloading and verifying update… You can keep using Senton Control.")
+        self.install_update_btn.setEnabled(False)
+        self.check_update_btn.setEnabled(False)
+        self._log("Secure update download started")
+
+        self.update_thread = UpdateDownloadThread(self.update_url, self)
+        self.update_thread.downloaded.connect(self._update_downloaded)
+        self.update_thread.failed.connect(self._update_download_failed)
+        self.update_thread.start()
+
+    def _update_downloaded(self, path):
+        self.update_status.setText("Update verified. Restarting Senton Control to install…")
+        self._log("Update downloaded and verified; closing app for replacement")
         try:
-            self.update_status.setText("Downloading update...")
-            path = download_update(self.update_url)
-            self._log("Update downloaded; closing app for replacement")
             install_update_to_main_desktop(path)
             QApplication.quit()
         except Exception as exc:
-            QMessageBox.critical(self, "Update Failed", str(exc))
-            self.update_status.setText("Update failed.")
+            self._update_download_failed(str(exc))
+
+    def _update_download_failed(self, message):
+        self.update_status.setText("Update failed. You can try again.")
+        self.install_update_btn.setEnabled(bool(self.update_url))
+        self.check_update_btn.setEnabled(True)
+        self._log("Update failed: " + message)
+        QMessageBox.critical(self, "Update Failed", message)
