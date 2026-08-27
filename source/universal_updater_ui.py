@@ -4,7 +4,7 @@ import tempfile
 from PySide6.QtCore import QThread, Signal
 from PySide6.QtWidgets import QApplication, QMessageBox, QProgressBar
 
-from installer_no_relaunch import install_update_no_relaunch
+from installer_relaunch import install_update_and_relaunch
 from progress_updater import download_update_with_progress
 from updater import check_for_update
 
@@ -44,11 +44,9 @@ def _show_previous_update_result(window):
     except Exception:
         return
 
-    if status in {"success", "success-no-relaunch"}:
-        window.update_status.setText(
-            f"Senton Control v{window.version} is installed. Automatic relaunch is disabled."
-        )
-        window._log("Previous update completed successfully; automatic relaunch disabled")
+    if status in {"success", "success-no-relaunch", "success-relaunched"}:
+        window.update_status.setText(f"Senton Control v{window.version} is installed and running.")
+        window._log("Previous update completed successfully")
         UPDATE_STATUS_FILE.unlink(missing_ok=True)
         return
 
@@ -61,7 +59,7 @@ def _show_previous_update_result(window):
 
 
 def install_universal_update_button(window):
-    """Fast verified updater with install handoff and no automatic relaunch."""
+    """Fast verified updater that installs, verifies the installed EXE, and relaunches automatically."""
 
     progress_bar = QProgressBar(window)
     progress_bar.setRange(0, 100)
@@ -126,7 +124,7 @@ def install_universal_update_button(window):
         elif value < 100:
             window.update_status.setText("Download complete. Verifying update integrity…")
         else:
-            window.update_status.setText("Update verified. Installing now…")
+            window.update_status.setText("Update verified. Installing and restarting Senton Control…")
 
     def update_failed(message):
         progress_bar.setVisible(True)
@@ -142,11 +140,11 @@ def install_universal_update_button(window):
         progress_bar.setVisible(True)
         progress_bar.setValue(100)
         window.update_status.setText(
-            "Update downloaded and verified at 100%. Installing now. Senton Control will stay closed after install."
+            "Update downloaded and verified at 100%. Installing now; Senton Control will restart automatically."
         )
-        window._log(f"Update downloaded and verified: {path}; starting verified no-relaunch install handoff")
+        window._log(f"Update downloaded and verified: {path}; starting verified install-and-relaunch handoff")
         try:
-            install_update_no_relaunch(path)
+            install_update_and_relaunch(path)
             QApplication.quit()
         except Exception as exc:
             update_failed(str(exc))
@@ -189,7 +187,7 @@ def install_universal_update_button(window):
         answer = QMessageBox.question(
             window,
             "Install Senton Control update",
-            "Download and install the newest Senton Control version now?\n\nSenton Control will stay open during download and verification. After verification reaches 100%, the update will be installed. Senton Control will not relaunch automatically."
+            "Download and install the newest Senton Control version now?\n\nSenton Control will stay open during download and verification. After verification reaches 100%, the current app will close, the verified EXE will replace it, and Senton Control will restart automatically."
         )
         if answer != QMessageBox.Yes:
             window.install_update_btn.setEnabled(True)
