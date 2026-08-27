@@ -1,10 +1,10 @@
 {
-    "version":  "1.2.7",
-    "owner_admin_sha256":  "1b7ee88500ffb720bbebe181c14969d7999790c06c9477067cfc4f44eabd6cb7",
+    "version":  "1.2.8",
+    "owner_admin_sha256":  "276cccd520b153939754ce99307d23b158491b24a02195f92492550f6b2850ff",
     "download_url":  "https://raw.githubusercontent.com/77m4wkbtzk-a11y/senton-control-updates/main/releases/Senton-Control.exe",
     "channel":  "public",
     "required":  false,
     "owner_admin_download_url":  "https://raw.githubusercontent.com/77m4wkbtzk-a11y/senton-control-updates/main/releases/Senton-Control-Owner-Admin.exe",
-    "notes":  "Senton Control v1.2.7 beta update. Verified build with old-update cleanup; obsolete Senton updater/rollback artifacts are removed after the new version starts.",
-    "sha256":  "d81d42b1a4db68141aaf7d49dd93ac10c30e4ade4ffb053238308e20ccf90189"
+    "notes":  "Senton Control v1.2.8 beta update with the branded Senton update screen/logo. Clean v1.2.7+ update path retained, including verified old-update cleanup after the new version starts.",
+    "sha256":  "124211fea826643359423dc5edbea6c5b705ea1b885b6a6b0b69c88b3d3f97b4"
 }
