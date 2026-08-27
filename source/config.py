@@ -1,9 +1,8 @@
 APP_NAME = "Senton Control"
-APP_VERSION = "1.2.6"
+APP_VERSION = "1.2.7"
 
-# Self-updating is intentionally disabled in the v1.2.6 desktop build.
-# This PC will receive v1.2.6 as the final self-update, then future updates
-# must be installed manually unless this setting is deliberately re-enabled.
+# Self-updating remains intentionally disabled in the v1.2.7 desktop build.
+# APP_VERSION above is the single authoritative version used by the app.
 UPDATE_MANIFEST_URL = ""
 PUBLIC_UPDATE_MANIFEST_URL = ""
 ADMIN_UPDATE_MANIFEST_URL = ""
