@@ -17,13 +17,18 @@ class ProgressUpdateThread(QThread):
     downloaded = Signal(object)
     failed = Signal(str)
 
-    def __init__(self, url, parent=None):
+    def __init__(self, url, expected_sha256, parent=None):
         super().__init__(parent)
         self.url = url
+        self.expected_sha256 = expected_sha256
 
     def run(self):
         try:
-            path = download_update_with_progress(self.url, self.progress.emit)
+            path = download_update_with_progress(
+                self.url,
+                self.expected_sha256,
+                self.progress.emit,
+            )
             self.downloaded.emit(path)
         except Exception as exc:
             self.failed.emit(str(exc))
@@ -55,7 +60,7 @@ def _show_previous_update_result(window):
 
 
 def install_universal_update_button(window):
-    """Keep Senton open during download/verification, then close the old app at 100%."""
+    """Fast universal updater baseline for Senton Control v1.2.11 and later."""
 
     progress_bar = QProgressBar(window)
     progress_bar.setRange(0, 100)
@@ -69,6 +74,7 @@ def install_universal_update_button(window):
 
     window.update_progress_bar = progress_bar
     window.universal_update_thread = None
+    window.update_sha256 = ""
 
     def show_result(result):
         if not result.get("ok"):
@@ -82,17 +88,25 @@ def install_universal_update_button(window):
         latest = result.get("latest_version", "?")
         if not result.get("update_available"):
             window.update_url = ""
+            window.update_sha256 = ""
             window.update_status.setText(f"You're up to date. Latest version: v{latest}")
             window.install_update_btn.setEnabled(True)
             window.check_update_btn.setEnabled(True)
             return False
 
         window.update_url = result.get("download_url", "").strip()
+        window.update_sha256 = result.get("sha256", "").strip().lower()
         if not window.update_url:
             window.update_status.setText(f"v{latest} is available, but its download URL is missing.")
             window.install_update_btn.setEnabled(True)
             window.check_update_btn.setEnabled(True)
             window._log("Update blocked: live manifest has no download URL")
+            return False
+        if len(window.update_sha256) != 64:
+            window.update_status.setText(f"v{latest} is available, but its verification hash is invalid.")
+            window.install_update_btn.setEnabled(True)
+            window.check_update_btn.setEnabled(True)
+            window._log("Update blocked: live manifest has no valid SHA-256")
             return False
 
         notes = result.get("notes", "").strip()
@@ -140,7 +154,7 @@ def install_universal_update_button(window):
         window.update_status.setText("Starting Senton Control update… 0%")
         window._log("Secure background update download started")
 
-        thread = ProgressUpdateThread(window.update_url, window)
+        thread = ProgressUpdateThread(window.update_url, window.update_sha256, window)
         window.universal_update_thread = thread
         window.update_thread = thread
         thread.progress.connect(set_progress)
