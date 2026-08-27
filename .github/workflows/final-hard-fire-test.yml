@@ -1,0 +1,165 @@
+name: Final Senton Updater Hard Fire Test
+
+on:
+  push:
+    paths:
+      - '.github/workflows/final-hard-fire-test.yml'
+      - 'source/**'
+      - 'tests/update_smoke_old.py'
+      - 'tests/update_smoke_new.py'
+  workflow_dispatch:
+
+jobs:
+  hard-fire:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        shell: powershell
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "PySide6>=6.7,<7" pyinstaller
+
+      - name: Compile critical source
+        shell: powershell
+        run: |
+          python -m py_compile source/config.py source/updater.py source/progress_updater.py source/installer_relaunch.py source/privacy_guard.py source/missing_person.py source/missing_person_camera.py source/pi_client.py source/universal_updater_ui.py
+
+      - name: Hard integrity privacy failsafe and assistance tests
+        shell: powershell
+        run: |
+          @'
+          import hashlib
+          import inspect
+          import sys
+          import tempfile
+          from pathlib import Path
+
+          sys.path.insert(0, 'source')
+          import config
+          import installer_relaunch
+          from updater import verify_file_sha256
+          from privacy_guard import PrivacyGuard
+          from missing_person import MissingPersonCase, MissingPersonDatabase, VehicleOfInterest
+          from missing_person_camera import MissingPersonCameraAssist
+          from pi_client import PiClient
+
+          assert config.PRIVACY_GUARD_RELEASE_READY is True
+          src = inspect.getsource(installer_relaunch.install_update_and_relaunch)
+          assert 'Get-FileHash' in src
+          assert 'Start-Process' in src
+          assert '_PYI_' in src
+          assert 'success-relaunched' in src
+          assert 'backup' in src.lower()
+
+          with tempfile.NamedTemporaryFile(delete=False) as f:
+              f.write(b'final-hard-fire-integrity')
+              p = Path(f.name)
+          good = hashlib.sha256(b'final-hard-fire-integrity').hexdigest()
+          assert verify_file_sha256(p, good) is True
+          try:
+              verify_file_sha256(p, '0' * 64)
+          except RuntimeError:
+              pass
+          else:
+              raise AssertionError('Corrupt update hash was accepted')
+          p.unlink(missing_ok=True)
+
+          guard = PrivacyGuard()
+          assert guard.sign_is_restricted('STAFF TOILET')
+          ev = guard.trigger_from_sign('TOILET', 'evidence/exterior-door.jpg')
+          assert guard.locked is True
+          assert ev.camera_name == 'Main Camera'
+          assert guard.authorise_phone_unlock(False) is False
+          assert guard.locked is True
+          assert guard.authorise_phone_unlock(True) is True
+          assert guard.locked is False
+
+          with tempfile.TemporaryDirectory() as root:
+              db = MissingPersonDatabase(Path(root) / 'cases.json')
+              case = MissingPersonCase(
+                  case_id='FIRE-001',
+                  name='Test Person',
+                  age=30,
+                  last_seen='TEST',
+                  last_known_area='Adelaide',
+                  vehicle=VehicleOfInterest(rego='S123 ABC', make_model='Test Vehicle'),
+              )
+              db.upsert_case(case)
+              assist = MissingPersonCameraAssist(db)
+              recs = assist.process_vehicle_observation('s123-abc', 'TEST ROAD', evidence_path='evidence/vehicle.jpg')
+              assert len(recs) == 1
+              assert recs[0]['status'] == 'PENDING_HUMAN_REVIEW'
+              packet = assist.sapol_review_packet(db.get_case('FIRE-001'), recs[0])
+              assert packet['observed_rego'] == 'S123ABC'
+              assert packet['identity_decision'] == 'NOT_AUTOMATED'
+
+          pi = PiClient()
+          pi.send_command('demo')
+          assert any(pi.get_status()['speed_kmh'] > 0 for _ in range(20))
+          pi.send_command('stop')
+          for _ in range(20):
+              status = pi.get_status()
+          assert status['speed_kmh'] == 0.0
+          assert status['throttle'] == 'NEUTRAL'
+
+          print('PASS: hard integrity, Privacy Guard, Missing Person Assistance, and failsafe tests')
+          '@ | python -
+
+      - name: Build old updater harness
+        shell: powershell
+        run: |
+          python -m PyInstaller --clean --noconfirm --onefile --paths source --hidden-import installer_relaunch --name "Senton Control" tests/update_smoke_old.py
+
+      - name: Build replacement harness
+        shell: powershell
+        run: |
+          python -m PyInstaller --clean --noconfirm --onefile --name "Senton Replacement" tests/update_smoke_new.py
+
+      - name: Final real replace verify relaunch fire test
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = Join-Path $PWD 'final-fire-install'
+          New-Item -ItemType Directory -Force -Path $root | Out-Null
+          $current = Join-Path $root 'Senton Control.exe'
+          $downloaded = Join-Path $root 'Senton Replacement.exe'
+          Copy-Item (Join-Path $PWD 'dist\Senton Control.exe') $current -Force
+          Copy-Item (Join-Path $PWD 'dist\Senton Replacement.exe') $downloaded -Force
+
+          $expectedHash = (Get-FileHash -LiteralPath $downloaded -Algorithm SHA256).Hash.ToLowerInvariant()
+          $statusFile = Join-Path $env:TEMP 'senton_control_update.status'
+          $markerFile = Join-Path $env:TEMP 'senton_update_smoke_new_started.txt'
+          Remove-Item $statusFile,$markerFile -Force -ErrorAction SilentlyContinue
+
+          $quotedDownloaded = '"' + $downloaded + '"'
+          $proc = Start-Process -FilePath $current -ArgumentList $quotedDownloaded -PassThru
+          $proc.WaitForExit()
+          if ($proc.ExitCode -ne 0) { throw "Updater harness exited with code $($proc.ExitCode)" }
+
+          $deadline = (Get-Date).AddSeconds(45)
+          while ((Get-Date) -lt $deadline) {
+            if ((Test-Path $statusFile) -and (Test-Path $markerFile)) { break }
+            Start-Sleep -Milliseconds 250
+          }
+
+          if (-not (Test-Path $statusFile)) { throw 'Updater status file was not created.' }
+          $status = (Get-Content -LiteralPath $statusFile -Raw).Trim()
+          if ($status -ne 'success-relaunched') { throw "Unexpected updater status: $status" }
+          if (-not (Test-Path $markerFile)) { throw 'Replacement EXE did not relaunch.' }
+          if (-not (Test-Path $current)) { throw 'Updated executable is missing.' }
+
+          $actualHash = (Get-FileHash -LiteralPath $current -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actualHash -ne $expectedHash) { throw 'Installed EXE SHA-256 does not match replacement.' }
+
+          $backup = Join-Path $root 'Senton Control.backup.exe'
+          if (-not (Test-Path $backup)) { throw 'Previous executable backup was not preserved.' }
+
+          Write-Host 'FINAL HARD FIRE PASS: close, backup, replace, SHA-256 verify, clean relaunch, and replacement startup all succeeded.'
