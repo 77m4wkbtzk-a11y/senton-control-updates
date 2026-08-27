@@ -56,7 +56,7 @@ jobs:
           from privacy_guard import PrivacyGuard
           from updater import verify_file_sha256
 
-          assert config.APP_VERSION == "1.2.9", f"Unexpected build version: {config.APP_VERSION}"
+          assert config.APP_VERSION == "1.2.10", f"Unexpected build version: {config.APP_VERSION}"
           raw = b"\xef\xbb\xbf" + json.dumps({"version": config.APP_VERSION}).encode("utf-8")
           manifest = json.loads(raw.decode("utf-8-sig"))
           assert manifest["version"] == config.APP_VERSION
@@ -68,7 +68,7 @@ jobs:
               dist.mkdir(parents=True)
 
               active_exe = dist / "Senton Control.exe"
-              active_exe.write_bytes(b"ACTIVE-1.2.9")
+              active_exe.write_bytes(b"ACTIVE-1.2.10")
               unrelated = dist / "keep-me.txt"
               unrelated.write_text("keep", encoding="utf-8")
 
@@ -80,7 +80,7 @@ jobs:
               removed = cleanup_obsolete_update_artifacts(install_root, temp_root)
               assert len(removed) == len(DIST_ARTIFACT_NAMES) + len(TEMP_ARTIFACT_NAMES)
               assert active_exe.exists(), "Cleanup deleted the active Senton Control.exe"
-              assert active_exe.read_bytes() == b"ACTIVE-1.2.9"
+              assert active_exe.read_bytes() == b"ACTIVE-1.2.10"
               assert unrelated.exists(), "Cleanup deleted an unrelated file"
               for name in DIST_ARTIFACT_NAMES:
                   assert not (dist / name).exists(), f"Old dist artifact survived: {name}"
@@ -104,7 +104,7 @@ jobs:
               raise AssertionError("Bad SHA-256 was not rejected")
           test_path.unlink(missing_ok=True)
 
-          # v1.2.9 Privacy Guard invariants.
+          # Privacy Guard invariants retained in v1.2.10.
           guard = PrivacyGuard()
           assert guard.camera_name == "Main Camera", "Privacy Guard must use the single Main Camera"
           assert guard.locked is False
@@ -118,7 +118,6 @@ jobs:
           assert event.evidence_path and event.evidence_path.endswith("exterior-door.jpg")
           assert event.detected_text == "TOILET"
 
-          # Desktop receives only an approval result; the Privacy Guard API has no PIN argument.
           unlock_params = list(inspect.signature(PrivacyGuard.authorise_phone_unlock).parameters)
           assert unlock_params == ["self", "approved"], f"Unexpected unlock API: {unlock_params}"
           assert guard.authorise_phone_unlock(False) is False
@@ -176,7 +175,7 @@ jobs:
         run: |
           $releaseReady = python -c "import sys; sys.path.insert(0, 'source'); import config; print('true' if getattr(config, 'PRIVACY_GUARD_RELEASE_READY', False) else 'false')"
           if ($releaseReady.Trim() -ne 'true') {
-            Write-Host "v1.2.9 Privacy Guard is still under development. Build completed but live publication is blocked."
+            Write-Host "Senton Control release is not ready. Build completed but live publication is blocked."
             exit 0
           }
 
@@ -200,7 +199,7 @@ jobs:
             sha256 = $hash
             owner_admin_download_url = "https://raw.githubusercontent.com/77m4wkbtzk-a11y/senton-control-updates/main/releases/Senton-Control-Owner-Admin.exe"
             owner_admin_sha256 = $adminHash
-            notes = "Senton Control v$($version.Trim()) major Senton Privacy Guard update."
+            notes = "Senton Control v$($version.Trim()) faster, responsive update installer with Privacy Guard baseline."
             required = $false
             channel = "public"
           } | ConvertTo-Json
