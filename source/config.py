@@ -1,8 +1,8 @@
 APP_NAME = "Senton Control"
-APP_VERSION = "1.2.7"
+APP_VERSION = "1.2.8"
 
-# Self-updating remains intentionally disabled in the v1.2.7 desktop build.
 # APP_VERSION above is the single authoritative version used by the app.
+# The v1.2.8 line introduces the branded Senton Control install screen/logo.
 UPDATE_MANIFEST_URL = ""
 PUBLIC_UPDATE_MANIFEST_URL = ""
 ADMIN_UPDATE_MANIFEST_URL = ""
