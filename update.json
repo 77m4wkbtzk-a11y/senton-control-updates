@@ -1,10 +1,10 @@
 {
-    "version":  "1.2.12",
-    "owner_admin_sha256":  "67681728c4288d93d35dd1057e4c38f086e888f40d0e8e6933c94e9c2372b0a4",
+    "version":  "1.2.12.1",
+    "owner_admin_sha256":  "2b0b4ffd99330ca3ae464018da860a07025aa4e396d1949324f5979dd7dec1e4",
     "download_url":  "https://raw.githubusercontent.com/77m4wkbtzk-a11y/senton-control-updates/main/releases/Senton-Control.exe",
     "channel":  "public",
     "required":  false,
     "owner_admin_download_url":  "https://raw.githubusercontent.com/77m4wkbtzk-a11y/senton-control-updates/main/releases/Senton-Control-Owner-Admin.exe",
-    "notes":  "Senton Control v1.2.12 verified update: Privacy Guard, Missing Person Assistance core, fast download progress and SHA-256 integrity verification.",
-    "sha256":  "b54e10c6a3718cd1379f688b11e2a210eb00c9938e9e28622a263a7ba1dc9486"
+    "notes":  "Senton Control v1.2.12.1 verified update: fast progress download, SHA-256 verification, automatic EXE installation and relaunch after install.",
+    "sha256":  "7f9dda013c2aa3b4d26b23548d58ace7750ef1df9b637fbc5885195b6afcc232"
 }
