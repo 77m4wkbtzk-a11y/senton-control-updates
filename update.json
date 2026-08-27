@@ -1,10 +1,10 @@
 {
     "version":  "1.2.9",
-    "owner_admin_sha256":  "bc0549cc28d78e0bd012d37cd93816f15c50be85a42c6164d18b1f50a77d4eb0",
+    "owner_admin_sha256":  "c743fc5a4a10197e3967a7962ba10cdc8272b2867393e804d8c2d79adf58d07e",
     "download_url":  "https://raw.githubusercontent.com/77m4wkbtzk-a11y/senton-control-updates/main/releases/Senton-Control.exe",
     "channel":  "public",
     "required":  false,
     "owner_admin_download_url":  "https://raw.githubusercontent.com/77m4wkbtzk-a11y/senton-control-updates/main/releases/Senton-Control-Owner-Admin.exe",
     "notes":  "Senton Control v1.2.9 major Senton Privacy Guard update.",
-    "sha256":  "11b7ad24fe2017126842f5cd5929025a908c6a9227560e3a0b8bc9a11fabd24f"
+    "sha256":  "88426977620c8e6c5c02f9c25343942329e35480732acd1f243bf2652aa318a1"
 }
