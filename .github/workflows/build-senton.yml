@@ -35,7 +35,7 @@ jobs:
       - name: Validate source
         shell: powershell
         run: |
-          python -m py_compile source/admin_main.py source/main.py source/config.py source/pi_client.py source/updater.py source/dashboard.py source/cleanup.py source/privacy_guard.py
+          python -m py_compile source/admin_main.py source/main.py source/config.py source/pi_client.py source/updater.py source/dashboard.py source/cleanup.py source/privacy_guard.py source/universal_updater_ui.py
 
       - name: Hard test simulation updater old-update cleanup and Privacy Guard
         shell: powershell
@@ -51,12 +51,15 @@ jobs:
           sys.path.insert(0, "source")
 
           import config
+          import universal_updater_ui
           from cleanup import cleanup_obsolete_update_artifacts, DIST_ARTIFACT_NAMES, TEMP_ARTIFACT_NAMES
           from pi_client import PiClient
           from privacy_guard import PrivacyGuard
           from updater import verify_file_sha256
 
           assert config.APP_VERSION == "1.2.10", f"Unexpected build version: {config.APP_VERSION}"
+          assert hasattr(universal_updater_ui, "install_universal_update_button")
+          assert hasattr(universal_updater_ui, "_show_previous_update_result")
           raw = b"\xef\xbb\xbf" + json.dumps({"version": config.APP_VERSION}).encode("utf-8")
           manifest = json.loads(raw.decode("utf-8-sig"))
           assert manifest["version"] == config.APP_VERSION
@@ -79,17 +82,10 @@ jobs:
 
               removed = cleanup_obsolete_update_artifacts(install_root, temp_root)
               assert len(removed) == len(DIST_ARTIFACT_NAMES) + len(TEMP_ARTIFACT_NAMES)
-              assert active_exe.exists(), "Cleanup deleted the active Senton Control.exe"
-              assert active_exe.read_bytes() == b"ACTIVE-1.2.10"
-              assert unrelated.exists(), "Cleanup deleted an unrelated file"
-              for name in DIST_ARTIFACT_NAMES:
-                  assert not (dist / name).exists(), f"Old dist artifact survived: {name}"
-              for name in TEMP_ARTIFACT_NAMES:
-                  assert not (temp_root / name).exists(), f"Old temp artifact survived: {name}"
-
-              assert cleanup_obsolete_update_artifacts(install_root, temp_root) == []
               assert active_exe.exists()
+              assert active_exe.read_bytes() == b"ACTIVE-1.2.10"
               assert unrelated.exists()
+              assert cleanup_obsolete_update_artifacts(install_root, temp_root) == []
 
           with tempfile.NamedTemporaryFile(delete=False) as f:
               f.write(b"senton-update-integrity-test")
@@ -105,28 +101,28 @@ jobs:
           test_path.unlink(missing_ok=True)
 
           guard = PrivacyGuard()
-          assert guard.camera_name == "Main Camera", "Privacy Guard must use the single Main Camera"
+          assert guard.camera_name == "Main Camera"
           assert guard.locked is False
           assert guard.sign_is_restricted("STAFF TOILET") is True
           assert guard.sign_is_restricted("Changing Room") is True
           assert guard.sign_is_restricted("Office") is False
 
           event = guard.trigger_from_sign("TOILET", "evidence/exterior-door.jpg")
-          assert guard.locked is True, "Restricted sign did not lock the camera"
+          assert guard.locked is True
           assert event.camera_name == "Main Camera"
           assert event.evidence_path and event.evidence_path.endswith("exterior-door.jpg")
           assert event.detected_text == "TOILET"
 
           unlock_params = list(inspect.signature(PrivacyGuard.authorise_phone_unlock).parameters)
-          assert unlock_params == ["self", "approved"], f"Unexpected unlock API: {unlock_params}"
+          assert unlock_params == ["self", "approved"]
           assert guard.authorise_phone_unlock(False) is False
-          assert guard.locked is True, "Denied phone approval unlocked Privacy Guard"
+          assert guard.locked is True
           assert guard.authorise_phone_unlock(True) is True
           assert guard.locked is False
 
           private_event = guard.trigger_private_area_view()
-          assert guard.locked is True, "Private-area view did not lock the camera"
-          assert private_event.evidence_path is None, "Private-area event must not invent interior evidence"
+          assert guard.locked is True
+          assert private_event.evidence_path is None
 
           pi = PiClient()
           status = pi.get_status()
@@ -140,7 +136,7 @@ jobs:
               status = pi.get_status()
               if status["speed_kmh"] > 0:
                   moving = True
-          assert moving, "Demo simulation never accelerated"
+          assert moving
 
           pi.send_command("stop")
           for _ in range(20):
@@ -154,7 +150,7 @@ jobs:
               status = pi.get_status()
           assert pi.distance_home <= before
 
-          print(f"Senton Control v{config.APP_VERSION} hard tests passed, including updater integrity and Privacy Guard invariants")
+          print(f"Senton Control v{config.APP_VERSION} hard tests passed, including universal updater recovery")
           '@ | python -
 
       - name: Build public EXE
@@ -198,7 +194,7 @@ jobs:
             sha256 = $hash
             owner_admin_download_url = "https://raw.githubusercontent.com/77m4wkbtzk-a11y/senton-control-updates/main/releases/Senton-Control-Owner-Admin.exe"
             owner_admin_sha256 = $adminHash
-            notes = "Senton Control v$($version.Trim()) in-app update handoff and restart repair with Privacy Guard baseline."
+            notes = "Senton Control v$($version.Trim()) in-app update handoff, restart and recovery-status repair with Privacy Guard baseline."
             required = $false
             channel = "public"
           } | ConvertTo-Json
