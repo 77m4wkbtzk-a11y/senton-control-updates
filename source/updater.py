@@ -137,10 +137,11 @@ def cleanup_expired_backup():
 
 
 def install_update_to_main_desktop(downloaded_exe):
-    """Close the running app, replace the Desktop EXE, then relaunch it.
+    """Apply an update after Senton Control fully releases its EXE.
 
-    The previous EXE is kept as a rollback copy for 24 hours. If replacement
-    fails, the previous EXE is restored and relaunched immediately.
+    The helper waits for every Senton Control.exe process to close, adds a
+    short Windows file-release delay, retries locked-file replacement, keeps
+    a 24-hour rollback copy, and relaunches through Explorer.
     """
     downloaded_exe = Path(downloaded_exe)
     if not MAIN_INSTALL_DIR.exists():
@@ -150,36 +151,55 @@ def install_update_to_main_desktop(downloaded_exe):
 
     MAIN_EXE.parent.mkdir(parents=True, exist_ok=True)
     bat_path = Path(tempfile.gettempdir()) / "senton_control_apply_update.bat"
-    current_pid = os.getpid()
 
     commands = [
         "@echo off",
-        "setlocal",
+        "setlocal EnableExtensions",
         "title Senton Control Updater",
         "echo Senton Control is closing for update...",
-        ":wait_for_app_exit",
-        f'tasklist /FI "PID eq {current_pid}" 2>NUL | find "{current_pid}" >NUL',
+        "",
+        ":wait_for_all_senton",
+        'tasklist /FI "IMAGENAME eq Senton Control.exe" 2>NUL | find /I "Senton Control.exe" >NUL',
         "if not errorlevel 1 (",
         "  timeout /t 1 /nobreak >nul",
-        "  goto wait_for_app_exit",
+        "  goto wait_for_all_senton",
         ")",
+        "",
+        "rem Give Windows/antivirus time to release the executable handle.",
+        "timeout /t 3 /nobreak >nul",
         "echo Installing Senton Control update...",
-        f'if exist "{BACKUP_EXE}" del /q "{BACKUP_EXE}"',
-        f'if exist "{BACKUP_MARKER}" del /q "{BACKUP_MARKER}"',
+        "",
+        f'if exist "{BACKUP_EXE}" del /q "{BACKUP_EXE}" >nul 2>&1',
+        f'if exist "{BACKUP_MARKER}" del /q "{BACKUP_MARKER}" >nul 2>&1',
         f'if exist "{MAIN_EXE}" copy /y "{MAIN_EXE}" "{BACKUP_EXE}" >nul',
-        f'powershell -NoProfile -Command "[IO.File]::WriteAllText(\'{BACKUP_MARKER}\', [string]([DateTimeOffset]::UtcNow.ToUnixTimeSeconds()))"',
-        f'copy /y "{downloaded_exe}" "{MAIN_EXE}" >nul',
         "if errorlevel 1 goto update_failed",
+        f'powershell -NoProfile -Command "[IO.File]::WriteAllText(\'{BACKUP_MARKER}\', [string]([DateTimeOffset]::UtcNow.ToUnixTimeSeconds()))"',
+        "",
+        "set RETRIES=0",
+        ":replace_retry",
+        f'copy /y "{downloaded_exe}" "{MAIN_EXE}" >nul 2>&1',
+        "if not errorlevel 1 goto replace_ok",
+        "set /a RETRIES+=1",
+        "if %RETRIES% GEQ 12 goto update_failed",
+        "echo Update file is still locked. Retrying... (%RETRIES%/12)",
+        "timeout /t 2 /nobreak >nul",
+        "goto replace_retry",
+        "",
+        ":replace_ok",
         f'if not exist "{MAIN_EXE}" goto update_failed',
+        f'for %%I in ("{MAIN_EXE}") do if %%~zI LSS 1048576 goto update_failed',
         "echo Update complete. Relaunching Senton Control...",
-        f'start "" "{MAIN_EXE}"',
+        "timeout /t 2 /nobreak >nul",
+        f'start "" explorer.exe "{MAIN_EXE}"',
         f'del /q "{downloaded_exe}" >nul 2>&1',
         'del "%~f0"',
         "exit /b 0",
+        "",
         ":update_failed",
         "echo Senton Control update failed. Restoring previous version...",
-        f'if exist "{BACKUP_EXE}" copy /y "{BACKUP_EXE}" "{MAIN_EXE}" >nul',
-        f'if exist "{MAIN_EXE}" start "" "{MAIN_EXE}"',
+        f'if exist "{BACKUP_EXE}" copy /y "{BACKUP_EXE}" "{MAIN_EXE}" >nul 2>&1',
+        "timeout /t 2 /nobreak >nul",
+        f'if exist "{MAIN_EXE}" start "" explorer.exe "{MAIN_EXE}"',
         "pause",
         "exit /b 1",
     ]
@@ -187,6 +207,10 @@ def install_update_to_main_desktop(downloaded_exe):
     bat_path.write_text("\r\n".join(commands), encoding="utf-8")
     subprocess.Popen(
         ["cmd.exe", "/c", str(bat_path)],
-        creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0),
+        creationflags=(
+            getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+            | getattr(subprocess, "DETACHED_PROCESS", 0)
+        ),
+        close_fds=True,
     )
     return True
