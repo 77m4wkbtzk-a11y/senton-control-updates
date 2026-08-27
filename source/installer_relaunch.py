@@ -39,7 +39,7 @@ def _sha256(path):
 
 
 def install_update_and_relaunch(downloaded_exe):
-    """Replace the running verified EXE after exit, verify the copied bytes, then relaunch it."""
+    """Replace the running verified EXE after exit, verify the copied bytes, then relaunch it cleanly."""
     downloaded_exe = Path(downloaded_exe).resolve()
     if not downloaded_exe.exists():
         raise FileNotFoundError(f"Downloaded update was not found: {downloaded_exe}")
@@ -81,9 +81,26 @@ function Write-SentonLog([string]$message) {{
     Add-Content -LiteralPath $logFile -Value ("$stamp $message") -Encoding UTF8
 }}
 
+function Reset-PyInstallerEnvironment {{
+    Get-ChildItem Env: | Where-Object {{ $_.Name -like '_PYI_*' }} | ForEach-Object {{
+        Remove-Item -LiteralPath ("Env:" + $_.Name) -ErrorAction SilentlyContinue
+    }}
+    $env:PYINSTALLER_RESET_ENVIRONMENT = '1'
+}}
+
+function Start-SentonExecutable([string]$exePath) {{
+    Reset-PyInstallerEnvironment
+    $workingDirectory = Split-Path -Parent $exePath
+    $launched = Start-Process -FilePath $exePath -WorkingDirectory $workingDirectory -PassThru
+    if ($null -eq $launched) {{ throw 'Windows did not return a process for the relaunched Senton executable.' }}
+    Start-Sleep -Milliseconds 500
+    Write-SentonLog ("Relaunch requested successfully; PID=" + $launched.Id)
+    return $launched
+}}
+
 try {{
     Remove-Item -LiteralPath $statusFile -Force -ErrorAction SilentlyContinue
-    Write-SentonLog 'Updater helper started (replace, verify, relaunch mode).'
+    Write-SentonLog 'Updater helper started (replace, verify, clean relaunch mode).'
 
     for ($i = 0; $i -lt 40; $i++) {{
         if (-not (Get-Process -Id $pidToWait -ErrorAction SilentlyContinue)) {{ break }}
@@ -125,17 +142,19 @@ try {{
 
     if (-not $installed) {{ throw 'Could not replace and verify the Senton Control executable.' }}
 
-    Set-Content -LiteralPath $statusFile -Value 'success-relaunched' -Encoding ASCII
     Remove-Item -LiteralPath $downloadedExe -Force -ErrorAction SilentlyContinue
-    Write-SentonLog 'New executable installed and verified. Relaunching Senton Control.'
-    Start-Process -FilePath $mainExe -WorkingDirectory (Split-Path -Parent $mainExe)
+    Write-SentonLog 'New executable installed and verified. Relaunching Senton Control with a clean PyInstaller environment.'
+    $newProcess = Start-SentonExecutable $mainExe
+    Set-Content -LiteralPath $statusFile -Value 'success-relaunched' -Encoding ASCII
 }} catch {{
     Write-SentonLog ('Update failed: ' + $_.Exception.Message)
     Set-Content -LiteralPath $statusFile -Value ('failed: ' + $_.Exception.Message) -Encoding UTF8
     if (Test-Path -LiteralPath $backupExe) {{
         Copy-Item -LiteralPath $backupExe -Destination $mainExe -Force -ErrorAction SilentlyContinue
         Write-SentonLog 'Previous executable restored after failed update.'
-        try {{ Start-Process -FilePath $mainExe -WorkingDirectory (Split-Path -Parent $mainExe) }} catch {{}}
+        try {{ Start-SentonExecutable $mainExe | Out-Null }} catch {{
+            Write-SentonLog ('Backup relaunch also failed: ' + $_.Exception.Message)
+        }}
     }}
     exit 1
 }}
