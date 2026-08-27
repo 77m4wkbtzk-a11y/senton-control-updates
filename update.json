@@ -1,10 +1,10 @@
 {
-    "version":  "1.2.12.3",
-    "owner_admin_sha256":  "6dc195775ae6286b9f1576c9a7281adbc3fd77af36a94f0f333425cdeef16cc9",
+    "version":  "1.2.12.4",
+    "owner_admin_sha256":  "38e8deebb4a7fe940c97d65c9f9da31dbbe2331699435a4d15ff85d21ddda5ce",
     "download_url":  "https://raw.githubusercontent.com/77m4wkbtzk-a11y/senton-control-updates/main/releases/Senton-Control.exe",
     "channel":  "public",
     "required":  false,
     "owner_admin_download_url":  "https://raw.githubusercontent.com/77m4wkbtzk-a11y/senton-control-updates/main/releases/Senton-Control-Owner-Admin.exe",
-    "notes":  "Senton Control v1.2.12.3 updater fix: verified download, verified replacement, automatic restart, backup/rollback protection, Privacy Guard, and human-reviewed Missing Person camera/vehicle assistance.",
-    "sha256":  "3b90489e611b4b665aceeb5027375e9b905d65efacbdeb987ef71d2b65e96396"
+    "notes":  "Senton Control v1.2.12.4 updater fix: verified download, verified replacement, automatic restart, backup/rollback protection, Privacy Guard, and human-reviewed Missing Person camera/vehicle assistance.",
+    "sha256":  "c86441e1b21e3207295b6428778d94ca570e7c6b8b642ab40278f9521c043809"
 }
