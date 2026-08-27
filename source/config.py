@@ -1,8 +1,9 @@
 APP_NAME = "Senton Control"
-APP_VERSION = "1.2.7"
+APP_VERSION = "1.2.8"
 
 # APP_VERSION above is the single authoritative version used by the app.
-# v1.2.7 is the cleanup/stability release. v1.2.8 work begins after this release is published.
+# v1.2.8 development keeps the branded install screen/logo work while the
+# public self-update channel remains disabled until v1.2.8 passes release tests.
 UPDATE_MANIFEST_URL = ""
 PUBLIC_UPDATE_MANIFEST_URL = ""
 ADMIN_UPDATE_MANIFEST_URL = ""
