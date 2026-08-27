@@ -137,11 +137,11 @@ def cleanup_expired_backup():
 
 
 def install_update_to_main_desktop(downloaded_exe):
-    """Apply an update after Senton Control fully releases its EXE.
+    """Apply an update after forcing the current Senton process to release its EXE.
 
-    The helper waits for every Senton Control.exe process to close, adds a
-    short Windows file-release delay, retries locked-file replacement, keeps
-    a 24-hour rollback copy, and relaunches through Explorer.
+    The helper gives the app a short grace period to quit normally. If the
+    current process is still alive, it terminates that exact process tree,
+    then waits for Senton Control.exe to disappear before replacing the file.
     """
     downloaded_exe = Path(downloaded_exe)
     if not MAIN_INSTALL_DIR.exists():
@@ -151,12 +151,21 @@ def install_update_to_main_desktop(downloaded_exe):
 
     MAIN_EXE.parent.mkdir(parents=True, exist_ok=True)
     bat_path = Path(tempfile.gettempdir()) / "senton_control_apply_update.bat"
+    current_pid = os.getpid()
 
     commands = [
         "@echo off",
         "setlocal EnableExtensions",
         "title Senton Control Updater",
-        "echo Senton Control is closing for update...",
+        "echo Senton Control is closing to install the update...",
+        "",
+        "rem Give the app a chance to quit normally first.",
+        "timeout /t 4 /nobreak >nul",
+        f'tasklist /FI "PID eq {current_pid}" 2>NUL | find "{current_pid}" >NUL',
+        "if not errorlevel 1 (",
+        "  echo Senton Control is still running. Closing it now...",
+        f'  taskkill /PID {current_pid} /T /F >nul 2>&1',
+        ")",
         "",
         ":wait_for_all_senton",
         'tasklist /FI "IMAGENAME eq Senton Control.exe" 2>NUL | find /I "Senton Control.exe" >NUL',
@@ -165,7 +174,7 @@ def install_update_to_main_desktop(downloaded_exe):
         "  goto wait_for_all_senton",
         ")",
         "",
-        "rem Give Windows/antivirus time to release the executable handle.",
+        "rem Give Windows and antivirus time to release executable handles.",
         "timeout /t 3 /nobreak >nul",
         "echo Installing Senton Control update...",
         "",
@@ -188,7 +197,7 @@ def install_update_to_main_desktop(downloaded_exe):
         ":replace_ok",
         f'if not exist "{MAIN_EXE}" goto update_failed',
         f'for %%I in ("{MAIN_EXE}") do if %%~zI LSS 1048576 goto update_failed',
-        "echo Update complete. Relaunching Senton Control...",
+        "echo Update complete. Starting the new Senton Control...",
         "timeout /t 2 /nobreak >nul",
         f'start "" explorer.exe "{MAIN_EXE}"',
         f'del /q "{downloaded_exe}" >nul 2>&1',
