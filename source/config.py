@@ -7,9 +7,8 @@ UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/77m4wkbtzk-a11y/senton-
 PUBLIC_UPDATE_MANIFEST_URL = UPDATE_MANIFEST_URL
 ADMIN_UPDATE_MANIFEST_URL = ""
 
-# v1.2.9 is blocked from the live update channel until Privacy Guard is complete
-# and its dedicated hard tests pass.
-PRIVACY_GUARD_RELEASE_READY = False
+# v1.2.9 release gate enabled after dedicated hard tests passed.
+PRIVACY_GUARD_RELEASE_READY = True
 
 PI_HOST = "192.168.1.50"
 PI_PORT = 8765
