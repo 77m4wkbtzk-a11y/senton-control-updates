@@ -55,7 +55,7 @@ jobs:
           from updater import verify_file_sha256
 
           # Single authoritative version value must be the expected build.
-          assert config.APP_VERSION == "1.2.7", f"Unexpected build version: {config.APP_VERSION}"
+          assert config.APP_VERSION == "1.2.8", f"Unexpected build version: {config.APP_VERSION}"
           raw = b"\xef\xbb\xbf" + json.dumps({"version": config.APP_VERSION}).encode("utf-8")
           manifest = json.loads(raw.decode("utf-8-sig"))
           assert manifest["version"] == config.APP_VERSION
@@ -68,7 +68,7 @@ jobs:
               dist.mkdir(parents=True)
 
               active_exe = dist / "Senton Control.exe"
-              active_exe.write_bytes(b"ACTIVE-1.2.7")
+              active_exe.write_bytes(b"ACTIVE-1.2.8")
               unrelated = dist / "keep-me.txt"
               unrelated.write_text("keep", encoding="utf-8")
 
@@ -80,7 +80,7 @@ jobs:
               removed = cleanup_obsolete_update_artifacts(install_root, temp_root)
               assert len(removed) == len(DIST_ARTIFACT_NAMES) + len(TEMP_ARTIFACT_NAMES)
               assert active_exe.exists(), "Cleanup deleted the active Senton Control.exe"
-              assert active_exe.read_bytes() == b"ACTIVE-1.2.7"
+              assert active_exe.read_bytes() == b"ACTIVE-1.2.8"
               assert unrelated.exists(), "Cleanup deleted an unrelated file"
               for name in DIST_ARTIFACT_NAMES:
                   assert not (dist / name).exists(), f"Old dist artifact survived: {name}"
@@ -171,7 +171,7 @@ jobs:
             sha256 = $hash
             owner_admin_download_url = "https://raw.githubusercontent.com/77m4wkbtzk-a11y/senton-control-updates/main/releases/Senton-Control-Owner-Admin.exe"
             owner_admin_sha256 = $adminHash
-            notes = "Senton Control v$($version.Trim()) beta update. Verified build with old-update cleanup; obsolete Senton updater/rollback artifacts are removed after the new version starts."
+            notes = "Senton Control v$($version.Trim()) beta update with the branded Senton update screen/logo. Clean v1.2.7+ update path retained, including verified old-update cleanup after the new version starts."
             required = $false
             channel = "public"
           } | ConvertTo-Json
