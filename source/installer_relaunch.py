@@ -19,10 +19,10 @@ def _current_app_exe():
     raise FileNotFoundError("Could not locate the running Senton Control executable.")
 
 
-def _backup_paths(main_exe):
+def _backup_paths(main_exe, backup_id):
     return (
-        main_exe.with_name("Senton Control.backup.exe"),
-        main_exe.with_name("Senton Control.backup.timestamp"),
+        main_exe.with_name(f"Senton Control.backup.{backup_id}.exe"),
+        main_exe.with_name(f"Senton Control.backup.{backup_id}.timestamp"),
     )
 
 
@@ -48,14 +48,15 @@ def install_update_and_relaunch(downloaded_exe):
 
     expected_sha256 = _sha256(downloaded_exe)
     main_exe = _current_app_exe().resolve()
-    backup_exe, backup_marker = _backup_paths(main_exe)
+    current_pid = os.getpid()
+    backup_id = f"{int(time.time() * 1000)}-{current_pid}"
+    backup_exe, backup_marker = _backup_paths(main_exe, backup_id)
     main_exe.parent.mkdir(parents=True, exist_ok=True)
 
     temp_dir = Path(tempfile.gettempdir())
     helper_path = temp_dir / "senton_control_apply_update_and_relaunch.ps1"
     log_path = temp_dir / "senton_control_update.log"
     status_path = temp_dir / "senton_control_update.status"
-    current_pid = os.getpid()
 
     q_main = _ps_literal(main_exe)
     q_download = _ps_literal(downloaded_exe)
@@ -100,7 +101,7 @@ function Start-SentonExecutable([string]$exePath) {{
 
 try {{
     Remove-Item -LiteralPath $statusFile -Force -ErrorAction SilentlyContinue
-    Write-SentonLog 'Updater helper started (replace, verify, clean relaunch mode).'
+    Write-SentonLog 'Updater helper started (unique backup, replace, verify, clean relaunch mode).'
 
     for ($i = 0; $i -lt 40; $i++) {{
         if (-not (Get-Process -Id $pidToWait -ErrorAction SilentlyContinue)) {{ break }}
@@ -113,13 +114,10 @@ try {{
         Start-Sleep -Milliseconds 750
     }}
 
-    if (Test-Path -LiteralPath $backupExe) {{ Remove-Item -LiteralPath $backupExe -Force }}
-    if (Test-Path -LiteralPath $backupMarker) {{ Remove-Item -LiteralPath $backupMarker -Force }}
-
     if (Test-Path -LiteralPath $mainExe) {{
-        Copy-Item -LiteralPath $mainExe -Destination $backupExe -Force
+        Copy-Item -LiteralPath $mainExe -Destination $backupExe
         [IO.File]::WriteAllText($backupMarker, [string]([DateTimeOffset]::UtcNow.ToUnixTimeSeconds()))
-        Write-SentonLog 'Previous executable backed up.'
+        Write-SentonLog ("Previous executable backed up to unique rollback file: " + $backupExe)
     }}
 
     $installed = $false
