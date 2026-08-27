@@ -1,11 +1,15 @@
 APP_NAME = "Senton Control"
-APP_VERSION = "1.2.8.1"
+APP_VERSION = "1.2.9"
 
 # APP_VERSION above is the single authoritative version used by the app.
-# v1.2.8.1 is a small OTA update-path test from the v1.2.8 baseline.
+# v1.2.9 is the major Senton Privacy Guard development release.
 UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/77m4wkbtzk-a11y/senton-control-updates/main/update.json"
 PUBLIC_UPDATE_MANIFEST_URL = UPDATE_MANIFEST_URL
 ADMIN_UPDATE_MANIFEST_URL = ""
+
+# v1.2.9 is blocked from the live update channel until Privacy Guard is complete
+# and its dedicated hard tests pass.
+PRIVACY_GUARD_RELEASE_READY = False
 
 PI_HOST = "192.168.1.50"
 PI_PORT = 8765
