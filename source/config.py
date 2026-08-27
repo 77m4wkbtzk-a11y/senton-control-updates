@@ -1,9 +1,9 @@
 APP_NAME = "Senton Control"
-APP_VERSION = "1.2.12.3"
+APP_VERSION = "1.2.12.4"
 
 # APP_VERSION above is the single authoritative version used by the app.
-# v1.2.12.3 keeps SHA-256 verification and backup/rollback protection,
-# then replaces the running EXE and relaunches Senton Control automatically.
+# v1.2.12.4 contains the hard-tested relaunch fix and keeps SHA-256 verification,
+# backup/rollback protection, and automatic restart after verified replacement.
 UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/77m4wkbtzk-a11y/senton-control-updates/main/update.json"
 PUBLIC_UPDATE_MANIFEST_URL = UPDATE_MANIFEST_URL
 ADMIN_UPDATE_MANIFEST_URL = ""
