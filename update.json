@@ -1,8 +1,10 @@
 {
-  "version": "1.2.6",
-  "download_url": "",
-  "channel": "public",
-  "required": false,
-  "notes": "Senton Control v1.2.7 is being held for beta verification and is not approved for installation yet.",
-  "sha256": ""
+    "version":  "1.2.7",
+    "owner_admin_sha256":  "1b7ee88500ffb720bbebe181c14969d7999790c06c9477067cfc4f44eabd6cb7",
+    "download_url":  "https://raw.githubusercontent.com/77m4wkbtzk-a11y/senton-control-updates/main/releases/Senton-Control.exe",
+    "channel":  "public",
+    "required":  false,
+    "owner_admin_download_url":  "https://raw.githubusercontent.com/77m4wkbtzk-a11y/senton-control-updates/main/releases/Senton-Control-Owner-Admin.exe",
+    "notes":  "Senton Control v1.2.7 beta update. Verified build with old-update cleanup; obsolete Senton updater/rollback artifacts are removed after the new version starts.",
+    "sha256":  "d81d42b1a4db68141aaf7d49dd93ac10c30e4ade4ffb053238308e20ccf90189"
 }
