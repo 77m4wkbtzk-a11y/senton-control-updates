@@ -1,10 +1,10 @@
 {
-    "version":  "1.2.12.1",
-    "owner_admin_sha256":  "2b0b4ffd99330ca3ae464018da860a07025aa4e396d1949324f5979dd7dec1e4",
-    "download_url":  "https://raw.githubusercontent.com/77m4wkbtzk-a11y/senton-control-updates/main/releases/Senton-Control.exe",
-    "channel":  "public",
-    "required":  false,
-    "owner_admin_download_url":  "https://raw.githubusercontent.com/77m4wkbtzk-a11y/senton-control-updates/main/releases/Senton-Control-Owner-Admin.exe",
-    "notes":  "Senton Control v1.2.12.1 verified update: fast progress download, SHA-256 verification, automatic EXE installation and relaunch after install.",
-    "sha256":  "7f9dda013c2aa3b4d26b23548d58ace7750ef1df9b637fbc5885195b6afcc232"
+  "version": "0.0.0",
+  "owner_admin_sha256": "",
+  "download_url": "",
+  "channel": "withdrawn",
+  "required": false,
+  "owner_admin_download_url": "",
+  "notes": "Senton Control v1.2.12.1 has been withdrawn from the live update channel.",
+  "sha256": ""
 }
