@@ -58,7 +58,7 @@ jobs:
           from privacy_guard import PrivacyGuard
           from updater import verify_file_sha256
 
-          assert config.APP_VERSION == "1.2.12.3"
+          assert config.APP_VERSION == "1.2.12.4"
           assert config.PRIVACY_GUARD_RELEASE_READY is True
           assert hasattr(installer_relaunch, "install_update_and_relaunch")
           assert hasattr(universal_updater_ui, "install_universal_update_button")
@@ -116,7 +116,7 @@ jobs:
               assert packet["observed_rego"] == "S123ABC"
               assert packet["identity_decision"] == "NOT_AUTOMATED"
 
-          print("Senton Control v1.2.12.3 hard tests passed")
+          print("Senton Control v1.2.12.4 hard tests passed")
           '@ | python -
 
       - name: Build public EXE
