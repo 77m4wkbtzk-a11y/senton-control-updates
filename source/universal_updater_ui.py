@@ -1,15 +1,35 @@
 from pathlib import Path
 import tempfile
 
-from updater import check_for_update
+from PySide6.QtCore import QThread, Signal
+from PySide6.QtWidgets import QApplication, QMessageBox, QProgressBar
+
+from progress_updater import download_update_with_progress
+from updater import check_for_update, install_update_to_main_desktop
 
 
 UPDATE_STATUS_FILE = Path(tempfile.gettempdir()) / "senton_control_update.status"
 UPDATE_LOG_FILE = Path(tempfile.gettempdir()) / "senton_control_update.log"
 
 
+class ProgressUpdateThread(QThread):
+    progress = Signal(int)
+    downloaded = Signal(object)
+    failed = Signal(str)
+
+    def __init__(self, url, parent=None):
+        super().__init__(parent)
+        self.url = url
+
+    def run(self):
+        try:
+            path = download_update_with_progress(self.url, self.progress.emit)
+            self.downloaded.emit(path)
+        except Exception as exc:
+            self.failed.emit(str(exc))
+
+
 def _show_previous_update_result(window):
-    """Surface the previous updater helper result instead of failing silently."""
     if not UPDATE_STATUS_FILE.exists():
         return
 
@@ -35,7 +55,20 @@ def _show_previous_update_result(window):
 
 
 def install_universal_update_button(window):
-    """Make update controls always re-check the live channel before installing."""
+    """Keep Senton open during download/verification and show 0-100 progress."""
+
+    progress_bar = QProgressBar(window)
+    progress_bar.setRange(0, 100)
+    progress_bar.setValue(0)
+    progress_bar.setFormat("Update progress: %p%")
+    progress_bar.setVisible(False)
+
+    update_layout = window.update_status.parentWidget().layout()
+    if update_layout is not None:
+        update_layout.insertWidget(2, progress_bar)
+
+    window.update_progress_bar = progress_bar
+    window.universal_update_thread = None
 
     def show_result(result):
         if not result.get("ok"):
@@ -70,8 +103,56 @@ def install_universal_update_button(window):
         window.install_update_btn.setEnabled(True)
         return True
 
+    def set_progress(value):
+        progress_bar.setVisible(True)
+        progress_bar.setValue(value)
+        if value < 92:
+            window.update_status.setText(f"Downloading Senton Control update… {value}%")
+        elif value < 100:
+            window.update_status.setText("Download complete. Verifying update integrity…")
+        else:
+            window.update_status.setText("Update verified. Preparing final install…")
+
+    def update_failed(message):
+        progress_bar.setVisible(True)
+        progress_bar.setValue(0)
+        window.update_status.setText("Update failed. Senton Control has remained open.")
+        window.install_update_btn.setEnabled(True)
+        window.check_update_btn.setEnabled(True)
+        window._log("Update failed: " + message)
+        QMessageBox.critical(window, "Update Failed", message)
+
+    def update_downloaded(path):
+        progress_bar.setVisible(True)
+        progress_bar.setValue(100)
+        window.update_status.setText(
+            "Update verified at 100%. Senton Control will close briefly to replace the EXE, then reopen automatically."
+        )
+        window._log("Update reached 100%; starting final EXE replacement")
+        try:
+            install_update_to_main_desktop(path)
+            QApplication.quit()
+        except Exception as exc:
+            update_failed(str(exc))
+
+    def start_download():
+        progress_bar.setVisible(True)
+        progress_bar.setValue(0)
+        window.install_update_btn.setEnabled(False)
+        window.check_update_btn.setEnabled(False)
+        window.update_status.setText("Starting Senton Control update… 0%")
+        window._log("Secure background update download started")
+
+        thread = ProgressUpdateThread(window.update_url, window)
+        window.universal_update_thread = thread
+        window.update_thread = thread
+        thread.progress.connect(set_progress)
+        thread.downloaded.connect(update_downloaded)
+        thread.failed.connect(update_failed)
+        thread.start()
+
     def check_now():
-        if window.update_thread and window.update_thread.isRunning():
+        if window.universal_update_thread and window.universal_update_thread.isRunning():
             return
         window.update_status.setText("Checking live Senton update channel…")
         window.check_update_btn.setEnabled(False)
@@ -79,16 +160,28 @@ def install_universal_update_button(window):
         show_result(result)
 
     def update_now():
-        if window.update_thread and window.update_thread.isRunning():
+        if window.universal_update_thread and window.universal_update_thread.isRunning():
             return
+
         window.update_status.setText("Checking for the newest Senton Control update…")
         window.install_update_btn.setEnabled(False)
         window.check_update_btn.setEnabled(False)
         result = check_for_update(window.version)
         if not show_result(result):
             return
+
+        answer = QMessageBox.question(
+            window,
+            "Install Senton Control update",
+            "Download and install the newest Senton Control version now?\n\nSenton Control will stay open during download and verification. It will only close briefly for the final replacement, then reopen automatically."
+        )
+        if answer != QMessageBox.Yes:
+            window.install_update_btn.setEnabled(True)
+            window.check_update_btn.setEnabled(True)
+            return
+
         window._log("Universal updater confirmed a newer live release")
-        window.install_update()
+        start_download()
 
     try:
         window.check_update_btn.clicked.disconnect()
