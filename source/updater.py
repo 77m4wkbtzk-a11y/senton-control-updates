@@ -2,16 +2,15 @@ import hashlib
 import json
 import os
 import subprocess
+import sys
 import tempfile
 import time
+import urllib.parse
 import urllib.request
 from pathlib import Path
 import config
 
-MAIN_INSTALL_DIR = Path(r"C:\Users\Admin\Desktop\senton_dashboard")
-MAIN_EXE = MAIN_INSTALL_DIR / "dist" / "Senton Control.exe"
-BACKUP_EXE = MAIN_INSTALL_DIR / "dist" / "Senton Control.backup.exe"
-BACKUP_MARKER = MAIN_INSTALL_DIR / "dist" / "Senton Control.backup.timestamp"
+LEGACY_MAIN_EXE = Path(r"C:\Users\Admin\Desktop\senton_dashboard\dist\Senton Control.exe")
 BACKUP_RETENTION_SECONDS = 24 * 60 * 60
 
 
@@ -22,8 +21,22 @@ def _version_tuple(version):
         return (0,)
 
 
+def _cache_busted_url(url):
+    parts = urllib.parse.urlsplit(url)
+    query = urllib.parse.parse_qsl(parts.query, keep_blank_values=True)
+    query.append(("senton_ts", str(int(time.time() * 1000))))
+    return urllib.parse.urlunsplit((parts.scheme, parts.netloc, parts.path, urllib.parse.urlencode(query), parts.fragment))
+
+
 def _fetch_manifest(url):
-    req = urllib.request.Request(url, headers={"User-Agent": "Senton-Control-Updater"})
+    req = urllib.request.Request(
+        _cache_busted_url(url),
+        headers={
+            "User-Agent": "Senton-Control-Updater",
+            "Cache-Control": "no-cache, no-store, max-age=0",
+            "Pragma": "no-cache",
+        },
+    )
     with urllib.request.urlopen(req, timeout=8) as response:
         return json.loads(response.read().decode("utf-8-sig"))
 
@@ -42,7 +55,7 @@ def verify_file_sha256(path, expected_sha256):
 
     digest = hashlib.sha256()
     with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+        for chunk in iter(lambda: f.read(4 * 1024 * 1024), b""):
             digest.update(chunk)
 
     if digest.hexdigest().lower() != expected:
@@ -94,10 +107,13 @@ def download_update(download_url, expected_sha256=""):
             raise RuntimeError("Update manifest is missing a valid SHA-256 integrity value.")
 
     target = Path(tempfile.gettempdir()) / "Senton_Control_Update.exe"
-    req = urllib.request.Request(download_url, headers={"User-Agent": "Senton-Control-Updater"})
-    with urllib.request.urlopen(req, timeout=60) as response, open(target, "wb") as f:
+    req = urllib.request.Request(
+        _cache_busted_url(download_url),
+        headers={"User-Agent": "Senton-Control-Updater", "Cache-Control": "no-cache"},
+    )
+    with urllib.request.urlopen(req, timeout=45) as response, open(target, "wb") as f:
         while True:
-            chunk = response.read(1024 * 1024)
+            chunk = response.read(4 * 1024 * 1024)
             if not chunk:
                 break
             f.write(chunk)
@@ -114,22 +130,39 @@ def download_update(download_url, expected_sha256=""):
     return target
 
 
+def _current_app_exe():
+    if getattr(sys, "frozen", False):
+        exe = Path(sys.executable).resolve()
+        if exe.exists():
+            return exe
+    if LEGACY_MAIN_EXE.exists():
+        return LEGACY_MAIN_EXE
+    raise FileNotFoundError("Could not locate the running Senton Control executable.")
+
+
+def _backup_paths(main_exe):
+    return (
+        main_exe.with_name("Senton Control.backup.exe"),
+        main_exe.with_name("Senton Control.backup.timestamp"),
+    )
+
+
 def cleanup_expired_backup():
-    """Keep the previous EXE for one day, then remove it on a later app start."""
     try:
-        if not BACKUP_EXE.exists():
-            if BACKUP_MARKER.exists():
-                BACKUP_MARKER.unlink(missing_ok=True)
+        main_exe = _current_app_exe()
+        backup_exe, backup_marker = _backup_paths(main_exe)
+        if not backup_exe.exists():
+            backup_marker.unlink(missing_ok=True)
             return False
 
-        if BACKUP_MARKER.exists():
-            created = float(BACKUP_MARKER.read_text(encoding="utf-8").strip())
+        if backup_marker.exists():
+            created = float(backup_marker.read_text(encoding="utf-8").strip())
         else:
-            created = BACKUP_EXE.stat().st_mtime
+            created = backup_exe.stat().st_mtime
 
         if time.time() - created >= BACKUP_RETENTION_SECONDS:
-            BACKUP_EXE.unlink(missing_ok=True)
-            BACKUP_MARKER.unlink(missing_ok=True)
+            backup_exe.unlink(missing_ok=True)
+            backup_marker.unlink(missing_ok=True)
             return True
     except Exception:
         pass
@@ -137,19 +170,15 @@ def cleanup_expired_backup():
 
 
 def install_update_to_main_desktop(downloaded_exe):
-    """Apply an update after forcing the current Senton process to release its EXE.
-
-    The helper gives the app a short grace period to quit normally. If the
-    current process is still alive, it terminates that exact process tree,
-    then waits for Senton Control.exe to disappear before replacing the file.
-    """
+    """Replace the exact running Senton Control EXE using a fast detached helper."""
     downloaded_exe = Path(downloaded_exe)
-    if not MAIN_INSTALL_DIR.exists():
-        raise FileNotFoundError(f"Main Senton Control folder was not found: {MAIN_INSTALL_DIR}")
     if not downloaded_exe.exists():
         raise FileNotFoundError(f"Downloaded update was not found: {downloaded_exe}")
 
-    MAIN_EXE.parent.mkdir(parents=True, exist_ok=True)
+    main_exe = _current_app_exe()
+    backup_exe, backup_marker = _backup_paths(main_exe)
+    main_exe.parent.mkdir(parents=True, exist_ok=True)
+
     bat_path = Path(tempfile.gettempdir()) / "senton_control_apply_update.bat"
     current_pid = os.getpid()
 
@@ -157,58 +186,44 @@ def install_update_to_main_desktop(downloaded_exe):
         "@echo off",
         "setlocal EnableExtensions",
         "title Senton Control Updater",
-        "echo Senton Control is closing to install the update...",
+        "echo Installing Senton Control update...",
         "",
-        "rem Give the app a chance to quit normally first.",
-        "timeout /t 4 /nobreak >nul",
+        "rem Short grace period, then close only the current Senton process.",
+        "timeout /t 1 /nobreak >nul",
         f'tasklist /FI "PID eq {current_pid}" 2>NUL | find "{current_pid}" >NUL',
         "if not errorlevel 1 (",
-        "  echo Senton Control is still running. Closing it now...",
         f'  taskkill /PID {current_pid} /T /F >nul 2>&1',
         ")",
         "",
-        ":wait_for_all_senton",
-        'tasklist /FI "IMAGENAME eq Senton Control.exe" 2>NUL | find /I "Senton Control.exe" >NUL',
-        "if not errorlevel 1 (",
-        "  timeout /t 1 /nobreak >nul",
-        "  goto wait_for_all_senton",
-        ")",
-        "",
-        "rem Give Windows and antivirus time to release executable handles.",
-        "timeout /t 3 /nobreak >nul",
-        "echo Installing Senton Control update...",
-        "",
-        f'if exist "{BACKUP_EXE}" del /q "{BACKUP_EXE}" >nul 2>&1',
-        f'if exist "{BACKUP_MARKER}" del /q "{BACKUP_MARKER}" >nul 2>&1',
-        f'if exist "{MAIN_EXE}" copy /y "{MAIN_EXE}" "{BACKUP_EXE}" >nul',
+        "rem Give Windows one moment to release the executable handle.",
+        "timeout /t 1 /nobreak >nul",
+        f'if exist "{backup_exe}" del /q "{backup_exe}" >nul 2>&1',
+        f'if exist "{backup_marker}" del /q "{backup_marker}" >nul 2>&1',
+        f'if exist "{main_exe}" copy /y "{main_exe}" "{backup_exe}" >nul',
         "if errorlevel 1 goto update_failed",
-        f'powershell -NoProfile -Command "[IO.File]::WriteAllText(\'{BACKUP_MARKER}\', [string]([DateTimeOffset]::UtcNow.ToUnixTimeSeconds()))"',
+        f'powershell -NoProfile -Command "[IO.File]::WriteAllText(\'{backup_marker}\', [string]([DateTimeOffset]::UtcNow.ToUnixTimeSeconds()))"',
         "",
         "set RETRIES=0",
         ":replace_retry",
-        f'copy /y "{downloaded_exe}" "{MAIN_EXE}" >nul 2>&1',
+        f'copy /y "{downloaded_exe}" "{main_exe}" >nul 2>&1',
         "if not errorlevel 1 goto replace_ok",
         "set /a RETRIES+=1",
-        "if %RETRIES% GEQ 12 goto update_failed",
-        "echo Update file is still locked. Retrying... (%RETRIES%/12)",
-        "timeout /t 2 /nobreak >nul",
+        "if %RETRIES% GEQ 8 goto update_failed",
+        "timeout /t 1 /nobreak >nul",
         "goto replace_retry",
         "",
         ":replace_ok",
-        f'if not exist "{MAIN_EXE}" goto update_failed',
-        f'for %%I in ("{MAIN_EXE}") do if %%~zI LSS 1048576 goto update_failed',
-        "echo Update complete. Starting the new Senton Control...",
-        "timeout /t 2 /nobreak >nul",
-        f'start "" explorer.exe "{MAIN_EXE}"',
+        f'if not exist "{main_exe}" goto update_failed',
+        f'for %%I in ("{main_exe}") do if %%~zI LSS 1048576 goto update_failed',
+        f'start "" explorer.exe "{main_exe}"',
         f'del /q "{downloaded_exe}" >nul 2>&1',
         'del "%~f0"',
         "exit /b 0",
         "",
         ":update_failed",
         "echo Senton Control update failed. Restoring previous version...",
-        f'if exist "{BACKUP_EXE}" copy /y "{BACKUP_EXE}" "{MAIN_EXE}" >nul 2>&1',
-        "timeout /t 2 /nobreak >nul",
-        f'if exist "{MAIN_EXE}" start "" explorer.exe "{MAIN_EXE}"',
+        f'if exist "{backup_exe}" copy /y "{backup_exe}" "{main_exe}" >nul 2>&1',
+        f'if exist "{main_exe}" start "" explorer.exe "{main_exe}"',
         "pause",
         "exit /b 1",
     ]
