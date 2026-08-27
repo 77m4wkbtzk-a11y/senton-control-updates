@@ -35,13 +35,14 @@ jobs:
       - name: Validate source
         shell: powershell
         run: |
-          python -m py_compile source/admin_main.py source/main.py source/config.py source/pi_client.py source/updater.py source/dashboard.py source/cleanup.py
+          python -m py_compile source/admin_main.py source/main.py source/config.py source/pi_client.py source/updater.py source/dashboard.py source/cleanup.py source/privacy_guard.py
 
-      - name: Hard test simulation updater and old-update cleanup
+      - name: Hard test simulation updater old-update cleanup and Privacy Guard
         shell: powershell
         run: |
           @'
           import hashlib
+          import inspect
           import json
           import sys
           import tempfile
@@ -52,6 +53,7 @@ jobs:
           import config
           from cleanup import cleanup_obsolete_update_artifacts, DIST_ARTIFACT_NAMES, TEMP_ARTIFACT_NAMES
           from pi_client import PiClient
+          from privacy_guard import PrivacyGuard
           from updater import verify_file_sha256
 
           assert config.APP_VERSION == "1.2.9", f"Unexpected build version: {config.APP_VERSION}"
@@ -102,6 +104,32 @@ jobs:
               raise AssertionError("Bad SHA-256 was not rejected")
           test_path.unlink(missing_ok=True)
 
+          # v1.2.9 Privacy Guard invariants.
+          guard = PrivacyGuard()
+          assert guard.camera_name == "Main Camera", "Privacy Guard must use the single Main Camera"
+          assert guard.locked is False
+          assert guard.sign_is_restricted("STAFF TOILET") is True
+          assert guard.sign_is_restricted("Changing Room") is True
+          assert guard.sign_is_restricted("Office") is False
+
+          event = guard.trigger_from_sign("TOILET", "evidence/exterior-door.jpg")
+          assert guard.locked is True, "Restricted sign did not lock the camera"
+          assert event.camera_name == "Main Camera"
+          assert event.evidence_path and event.evidence_path.endswith("exterior-door.jpg")
+          assert event.detected_text == "TOILET"
+
+          # Desktop receives only an approval result; the Privacy Guard API has no PIN argument.
+          unlock_params = list(inspect.signature(PrivacyGuard.authorise_phone_unlock).parameters)
+          assert unlock_params == ["self", "approved"], f"Unexpected unlock API: {unlock_params}"
+          assert guard.authorise_phone_unlock(False) is False
+          assert guard.locked is True, "Denied phone approval unlocked Privacy Guard"
+          assert guard.authorise_phone_unlock(True) is True
+          assert guard.locked is False
+
+          private_event = guard.trigger_private_area_view()
+          assert guard.locked is True, "Private-area view did not lock the camera"
+          assert private_event.evidence_path is None, "Private-area event must not invent interior evidence"
+
           pi = PiClient()
           status = pi.get_status()
           assert status["simulation"] is True
@@ -128,7 +156,7 @@ jobs:
               status = pi.get_status()
           assert pi.distance_home <= before
 
-          print(f"Senton Control v{config.APP_VERSION} base hard tests passed")
+          print(f"Senton Control v{config.APP_VERSION} hard tests passed, including Privacy Guard invariants")
           '@ | python -
 
       - name: Build public EXE
