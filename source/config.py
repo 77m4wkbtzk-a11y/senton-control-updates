@@ -1,13 +1,14 @@
 APP_NAME = "Senton Control"
-APP_VERSION = "1.2.11"
+APP_VERSION = "1.2.12"
 
 # APP_VERSION above is the single authoritative version used by the app.
-# v1.2.11 adds the revised update flow: download and verify with progress, then close the old app without automatic EXE replacement or restart.
+# v1.2.12 is the Missing Person Assistance / police evidence development release,
+# retaining the revised verified update flow and Senton Privacy Guard protections.
 UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/77m4wkbtzk-a11y/senton-control-updates/main/update.json"
 PUBLIC_UPDATE_MANIFEST_URL = UPDATE_MANIFEST_URL
 ADMIN_UPDATE_MANIFEST_URL = ""
 
-# Release gate remains enabled after dedicated hard tests passed.
+# Privacy Guard release gate remains enabled after dedicated hard tests passed.
 PRIVACY_GUARD_RELEASE_READY = True
 
 PI_HOST = "192.168.1.50"
