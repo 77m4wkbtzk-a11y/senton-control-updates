@@ -51,7 +51,8 @@ jobs:
           $markerFile = Join-Path $env:TEMP 'senton_update_smoke_new_started.txt'
           Remove-Item $statusFile,$markerFile -Force -ErrorAction SilentlyContinue
 
-          $proc = Start-Process -FilePath $current -ArgumentList @($downloaded) -PassThru
+          $quotedDownloaded = '"' + $downloaded + '"'
+          $proc = Start-Process -FilePath $current -ArgumentList $quotedDownloaded -PassThru
           $proc.WaitForExit()
           if ($proc.ExitCode -ne 0) { throw "Old updater harness exited with code $($proc.ExitCode)" }
 
