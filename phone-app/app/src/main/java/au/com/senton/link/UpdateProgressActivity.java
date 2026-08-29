@@ -14,6 +14,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.provider.Settings;
 import android.view.Gravity;
 import android.view.ViewGroup;
 import android.view.WindowManager;
@@ -133,7 +134,6 @@ public class UpdateProgressActivity extends Activity {
         root.addView(footer, mt(22));
 
         setContentView(scroll);
-
         if (!resumePendingUpdateIfAny()) checkForUpdateAutomatically();
     }
 
@@ -142,6 +142,9 @@ public class UpdateProgressActivity extends Activity {
         polling = true;
         handler.removeCallbacks(progressPoll);
         handler.post(progressPoll);
+        if (downloadId != -1 && canInstallPackages() && isDownloadSuccessful()) {
+            handleDownloadedUpdate();
+        }
     }
 
     @Override protected void onPause() {
@@ -264,6 +267,17 @@ public class UpdateProgressActivity extends Activity {
         return false;
     }
 
+    private boolean isDownloadSuccessful() {
+        DownloadManager dm = (DownloadManager) getSystemService(DOWNLOAD_SERVICE);
+        try (Cursor cursor = dm.query(new DownloadManager.Query().setFilterById(downloadId))) {
+            if (cursor == null || !cursor.moveToFirst()) return false;
+            int idx = cursor.getColumnIndex(DownloadManager.COLUMN_STATUS);
+            return idx >= 0 && cursor.getInt(idx) == DownloadManager.STATUS_SUCCESSFUL;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     private void refreshDownloadProgress() {
         if (downloadId == -1) return;
         DownloadManager dm = (DownloadManager) getSystemService(DOWNLOAD_SERVICE);
@@ -367,7 +381,29 @@ public class UpdateProgressActivity extends Activity {
         }, "senton-update-verify").start();
     }
 
+    private boolean canInstallPackages() {
+        return Build.VERSION.SDK_INT < Build.VERSION_CODES.O || getPackageManager().canRequestPackageInstalls();
+    }
+
+    private void openInstallPermissionSettings() {
+        setStage("INSTALL PERMISSION REQUIRED");
+        detail.setText("Android must allow Senton Link to install this verified update. Enable Allow from this source, then return to Senton Link.");
+        progress.setIndeterminate(false);
+        progress.setProgress(100);
+        percent.setText("100%");
+        try {
+            Intent settings = new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + getPackageName()));
+            startActivity(settings);
+        } catch (Exception e) {
+            startActivity(new Intent(Settings.ACTION_SECURITY_SETTINGS));
+        }
+    }
+
     private void launchInstaller(Uri uri) {
+        if (!canInstallPackages()) {
+            openInstallPermissionSettings();
+            return;
+        }
         setStage("Update in progress — verified, opening Android installer…");
         detail.setText("Verification passed. Android will ask you to confirm the installation.");
         progress.setIndeterminate(false);
