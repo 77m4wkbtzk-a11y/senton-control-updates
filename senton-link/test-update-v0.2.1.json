@@ -1,0 +1,11 @@
+{
+  "app": "Senton Link",
+  "version": "0.2.1",
+  "versionCode": 201,
+  "channel": "test",
+  "mandatory": false,
+  "status": "manifest-ready-apk-required",
+  "notes": "Senton Link phone updater test. Confirms update discovery and prepares the download/install flow.",
+  "apk": null,
+  "sha256": null
+}
