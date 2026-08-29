@@ -5,6 +5,7 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.os.Bundle;
+import android.provider.Settings;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
@@ -31,6 +32,7 @@ public class MainActivity extends Activity {
         if (testMode) {
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         }
+        applyImmersiveLauncherUi();
 
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
@@ -41,7 +43,7 @@ public class MainActivity extends Activity {
         scroll.addView(root);
 
         root.addView(text("SENTON LINK", 30, Color.WHITE, true));
-        root.addView(text("v" + BuildConfig.VERSION_NAME, 13, Color.rgb(38, 139, 255), true));
+        root.addView(text("v" + BuildConfig.VERSION_NAME + " • Launcher Mode", 13, Color.rgb(38, 139, 255), true));
 
         testBanner = text("⚠ UNDER TESTING ⚠\nTEMPORARY HARD-TEST SESSION\nVEHICLE CONTROLS LOCKED", 18, Color.WHITE, true);
         testBanner.setGravity(Gravity.CENTER);
@@ -74,6 +76,19 @@ public class MainActivity extends Activity {
 
         systemPanel = panel(systemText());
         root.addView(systemPanel, mt(16));
+
+        Button maintenance = button("HOLD FOR ANDROID MAINTENANCE", true);
+        maintenance.setOnClickListener(v -> { });
+        maintenance.setOnLongClickListener(v -> {
+            Intent settings = new Intent(Settings.ACTION_SETTINGS);
+            startActivity(settings);
+            return true;
+        });
+        root.addView(maintenance, mt(16));
+        TextView maintenanceHint = text("Long-press only. Opens Android settings for Wi-Fi, USB debugging, recovery and maintenance.", 12, Color.rgb(135, 166, 196), false);
+        maintenanceHint.setGravity(Gravity.CENTER);
+        root.addView(maintenanceHint, mt(6));
+
         TextView footer = text("Senton Link " + BuildConfig.VERSION_NAME + " • com.senton.link", 12, Color.rgb(90, 115, 140), false);
         footer.setGravity(Gravity.CENTER);
         root.addView(footer, mt(22));
@@ -82,6 +97,7 @@ public class MainActivity extends Activity {
 
     @Override protected void onResume() {
         super.onResume();
+        applyImmersiveLauncherUi();
         if (testMode) {
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
             if (testBanner != null) testBanner.setVisibility(View.VISIBLE);
@@ -97,8 +113,24 @@ public class MainActivity extends Activity {
         super.onPause();
     }
 
+    @Override public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (hasFocus) applyImmersiveLauncherUi();
+    }
+
+    private void applyImmersiveLauncherUi() {
+        getWindow().getDecorView().setSystemUiVisibility(
+                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY |
+                View.SYSTEM_UI_FLAG_FULLSCREEN |
+                View.SYSTEM_UI_FLAG_HIDE_NAVIGATION |
+                View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN |
+                View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION |
+                View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
+    }
+
     private String systemText() {
         return "SYSTEM\n\nApp status      " + (testMode ? "TESTING" : "OK") +
+                "\nLauncher mode   Ready" +
                 "\nUpdate channel  Beta\nVehicle link    Disconnected\nSafety mode     Active";
     }
 
