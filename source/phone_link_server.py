@@ -1,7 +1,8 @@
 """Local Senton Link phone <-> Windows bridge.
 
 Status/test-only bridge. Vehicle motion and charge actuation are intentionally
-not exposed here. Bind to LAN only when explicitly started by Senton Control.
+not exposed here. The Android client treats any unsafe/malformed response as a
+disconnect and keeps all vehicle controls locked.
 """
 from __future__ import annotations
 
@@ -12,8 +13,13 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 PORT = 8765
+PROTOCOL_VERSION = 1
+MAX_BODY_BYTES = 2048
+
+_state_lock = threading.Lock()
 _state = {
     "service": "Senton Control",
+    "protocol": PROTOCOL_VERSION,
     "pc_connected": True,
     "pi_connected": False,
     "safe_mode": True,
@@ -26,6 +32,7 @@ _state = {
 
 
 def local_ip() -> str:
+    """Best-effort LAN address for display; no packet needs to be sent."""
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
         s.connect(("8.8.8.8", 80))
@@ -36,53 +43,102 @@ def local_ip() -> str:
         s.close()
 
 
+def snapshot_state() -> dict:
+    with _state_lock:
+        payload = dict(_state)
+    payload["updated"] = int(time.time())
+    return payload
+
+
+class SentonThreadingHTTPServer(ThreadingHTTPServer):
+    daemon_threads = True
+    allow_reuse_address = True
+
+
 class Handler(BaseHTTPRequestHandler):
-    server_version = "SentonLink/1.0"
+    server_version = "SentonLink/1.1"
 
     def _json(self, code: int, payload: dict) -> None:
         data = json.dumps(payload, separators=(",", ":")).encode("utf-8")
         self.send_response(code)
-        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(data)))
         self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Senton-Protocol", str(PROTOCOL_VERSION))
         self.end_headers()
         self.wfile.write(data)
 
     def do_GET(self) -> None:
         if self.path == "/senton/status":
-            payload = dict(_state)
-            payload["updated"] = int(time.time())
-            self._json(200, payload)
+            self._json(200, snapshot_state())
         elif self.path == "/senton/ping":
-            self._json(200, {"ok": True, "service": "Senton Control", "safe_mode": True})
+            self._json(
+                200,
+                {
+                    "ok": True,
+                    "service": "Senton Control",
+                    "protocol": PROTOCOL_VERSION,
+                    "safe_mode": True,
+                },
+            )
         else:
-            self._json(404, {"error": "not_found"})
+            self._json(404, {"error": "not_found", "safe_mode": True})
 
     def do_POST(self) -> None:
         # Test messaging only. No drive/charge commands are accepted.
         if self.path != "/senton/test-message":
             self._json(403, {"error": "command_locked", "safe_mode": True})
             return
-        length = min(int(self.headers.get("Content-Length", "0") or 0), 2048)
+
+        raw_length = self.headers.get("Content-Length", "0")
+        try:
+            length = int(raw_length)
+        except (TypeError, ValueError):
+            self._json(400, {"error": "bad_content_length", "safe_mode": True})
+            return
+        if length < 0 or length > MAX_BODY_BYTES:
+            self._json(413, {"error": "body_too_large", "safe_mode": True})
+            return
+
         try:
             body = json.loads(self.rfile.read(length) or b"{}")
+            if not isinstance(body, dict):
+                raise ValueError("JSON body must be an object")
         except Exception:
-            self._json(400, {"error": "bad_json"})
+            self._json(400, {"error": "bad_json", "safe_mode": True})
             return
+
         message = str(body.get("message", ""))[:200]
-        _state["message"] = message or "Phone test received"
-        _state["updated"] = int(time.time())
-        self._json(200, {"ok": True, "echo": _state["message"], "safe_mode": True})
+        now = int(time.time())
+        with _state_lock:
+            _state["message"] = message or "Phone test received"
+            _state["updated"] = now
+            echo = _state["message"]
+        self._json(
+            200,
+            {
+                "ok": True,
+                "echo": echo,
+                "protocol": PROTOCOL_VERSION,
+                "safe_mode": True,
+            },
+        )
 
     def log_message(self, fmt: str, *args) -> None:
         return
 
 
 def start_phone_link(host: str = "0.0.0.0", port: int = PORT):
-    server = ThreadingHTTPServer((host, port), Handler)
-    thread = threading.Thread(target=server.serve_forever, name="senton-phone-link", daemon=True)
+    server = SentonThreadingHTTPServer((host, port), Handler)
+    thread = threading.Thread(
+        target=server.serve_forever,
+        name="senton-phone-link",
+        daemon=True,
+    )
     thread.start()
-    return server, f"http://{local_ip()}:{port}"
+    actual_port = int(server.server_address[1])
+    display_host = "127.0.0.1" if host in {"127.0.0.1", "localhost"} else local_ip()
+    return server, f"http://{display_host}:{actual_port}"
 
 
 if __name__ == "__main__":
@@ -93,3 +149,4 @@ if __name__ == "__main__":
             time.sleep(3600)
     except KeyboardInterrupt:
         server.shutdown()
+        server.server_close()
