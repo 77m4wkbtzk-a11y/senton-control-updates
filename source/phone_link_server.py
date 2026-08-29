@@ -94,7 +94,18 @@ class Handler(BaseHTTPRequestHandler):
             self._json(400, {"error": "unsupported_transfer_encoding", "safe_mode": True})
             return None
 
-        raw_length = self.headers.get("Content-Length", "0")
+        # Reject duplicate or non-decimal Content-Length fields. Python's int()
+        # accepts forms such as "+2" and "2_0", and Message.get() returns only one
+        # value when duplicate headers are present. Neither is appropriate for an
+        # HTTP message boundary on this safety-sensitive bridge.
+        content_lengths = self.headers.get_all("Content-Length", failobj=[])
+        if len(content_lengths) > 1:
+            self._json(400, {"error": "bad_content_length", "safe_mode": True})
+            return None
+        raw_length = content_lengths[0].strip() if content_lengths else "0"
+        if not raw_length.isascii() or not raw_length.isdigit():
+            self._json(400, {"error": "bad_content_length", "safe_mode": True})
+            return None
         try:
             length = int(raw_length)
         except (TypeError, ValueError):
