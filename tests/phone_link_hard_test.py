@@ -5,7 +5,7 @@ import socket
 import sys
 import time
 from pathlib import Path
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -47,6 +47,31 @@ def first_status_line(raw: socket.socket) -> bytes:
     return raw.recv(512).split(b"\r\n", 1)[0]
 
 
+def assert_safe(status: dict):
+    assert status["safe_mode"] is True
+    assert status["pi_connected"] is False
+    assert status["speed_kmh"] == 0
+
+
+def stalled_request(port: int):
+    stalled = socket.create_connection(("127.0.0.1", port), timeout=REQUEST_BODY_TIMEOUT_SECONDS + 3)
+    stalled.sendall(
+        b"POST /senton/test-message HTTP/1.1\r\n"
+        b"Host: 127.0.0.1\r\n"
+        b"Content-Type: application/json\r\n"
+        b"Content-Length: 64\r\n"
+        b"Connection: close\r\n\r\n"
+        b"{"
+    )
+    started = time.monotonic()
+    line = first_status_line(stalled)
+    elapsed = time.monotonic() - started
+    stalled.close()
+    assert b" 408 " in line, line
+    assert elapsed <= REQUEST_BODY_TIMEOUT_SECONDS + 2.0, elapsed
+    return elapsed
+
+
 def main():
     assert REQUEST_QUEUE_SIZE >= 64
 
@@ -56,10 +81,8 @@ def main():
         status = get_json(base + "/senton/status")
         assert status["service"] == "Senton Control"
         assert status["protocol"] == PROTOCOL_VERSION
-        assert status["safe_mode"] is True
-        assert status["pi_connected"] is False
-        assert status["speed_kmh"] == 0
         assert status["preview_active"] is False
+        assert_safe(status)
 
         ping = get_json(base + "/senton/ping")
         assert ping == {
@@ -76,20 +99,28 @@ def main():
         status = get_json(base + "/senton/status")
         assert status["message"] == "TEST MODE PREVIEW — SAFE MODE ACTIVE"
         assert status["preview_active"] is True
-        assert status["safe_mode"] is True
-        assert status["pi_connected"] is False
-        assert status["speed_kmh"] == 0
+        assert_safe(status)
 
-        for route in [
+        locked_routes = [
             "/senton/drive",
             "/senton/start-charge",
             "/senton/stop-charge",
             "/senton/solar-charge",
             "/senton/throttle",
-        ]:
-            blocked = expect_http_error(Request(base + route, data=b"{}", method="POST"), 403)
-            assert blocked["error"] == "command_locked"
-            assert blocked["safe_mode"] is True
+            "/senton/brake",
+            "/senton/steering",
+        ]
+        lock_payloads = [
+            b"{}",
+            b'{"authenticated":true,"value":100}',
+            b'{"pi_connected":true,"safe_mode":false}',
+            b'{"command":"drive","speed":100}',
+        ]
+        for route in locked_routes:
+            for payload in lock_payloads:
+                blocked = expect_http_error(Request(base + route, data=payload, method="POST"), 403)
+                assert blocked["error"] == "command_locked"
+                assert blocked["safe_mode"] is True
 
         malformed = expect_http_error(
             Request(
@@ -119,6 +150,16 @@ def main():
         assert b" 400 " in first_status_line(raw)
         raw.close()
 
+        negative = socket.create_connection(("127.0.0.1", port), timeout=3)
+        negative.sendall(
+            b"POST /senton/test-message HTTP/1.1\r\n"
+            b"Host: 127.0.0.1\r\n"
+            b"Content-Length: -1\r\n"
+            b"Connection: close\r\n\r\n"
+        )
+        assert b" 413 " in first_status_line(negative)
+        negative.close()
+
         truncated = socket.create_connection(("127.0.0.1", port), timeout=3)
         truncated.sendall(
             b"POST /senton/test-message HTTP/1.1\r\n"
@@ -132,40 +173,30 @@ def main():
         assert b" 400 " in first_status_line(truncated)
         truncated.close()
 
-        stalled = socket.create_connection(("127.0.0.1", port), timeout=REQUEST_BODY_TIMEOUT_SECONDS + 3)
-        stalled.sendall(
-            b"POST /senton/test-message HTTP/1.1\r\n"
-            b"Host: 127.0.0.1\r\n"
-            b"Content-Type: application/json\r\n"
-            b"Content-Length: 64\r\n"
-            b"Connection: close\r\n\r\n"
-            b"{"
-        )
-        started = time.monotonic()
-        stalled_line = first_status_line(stalled)
-        elapsed = time.monotonic() - started
-        stalled.close()
-        assert b" 408 " in stalled_line, stalled_line
-        assert elapsed <= REQUEST_BODY_TIMEOUT_SECONDS + 2.0, elapsed
+        # Hold several partial requests open at once while telemetry continues to poll.
+        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+            stalled_futures = [pool.submit(stalled_request, port) for _ in range(8)]
+            for _ in range(50):
+                assert_safe(get_json(base + "/senton/status"))
+            stalled_elapsed = [future.result() for future in stalled_futures]
+        assert max(stalled_elapsed) <= REQUEST_BODY_TIMEOUT_SECONDS + 2.0
 
         def send(i: int):
+            if i % 4 == 0:
+                result = get_json(base + "/senton/status")
+                assert_safe(result)
+                return "status"
             result = post_json(base + "/senton/test-message", {"message": f"test-{i}"})
             assert result["ok"] is True
             assert result["safe_mode"] is True
             assert result["protocol"] == PROTOCOL_VERSION
             return result["echo"]
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=20) as pool:
-            echoes = list(pool.map(send, range(100)))
-        assert len(echoes) == 100
-        assert all(e.startswith("test-") for e in echoes)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=96) as pool:
+            mixed = list(pool.map(send, range(1200)))
+        assert len(mixed) == 1200
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=64) as pool:
-            burst_echoes = list(pool.map(send, range(400, 900)))
-        assert len(burst_echoes) == 500
-        assert all(e.startswith("test-") for e in burst_echoes)
-
-        for _ in range(100):
+        for _ in range(150):
             dropped = socket.create_connection(("127.0.0.1", port), timeout=3)
             dropped.sendall(
                 b"GET /senton/status HTTP/1.1\r\n"
@@ -174,26 +205,33 @@ def main():
             )
             dropped.close()
 
-        status = get_json(base + "/senton/status")
-        assert status["safe_mode"] is True
-        assert status["pi_connected"] is False
-        assert status["speed_kmh"] == 0
+        assert_safe(get_json(base + "/senton/status"))
     finally:
         server.shutdown()
         server.server_close()
 
-    for _ in range(10):
+    # Simulated bridge/network loss must make the endpoint unreachable, never actuating.
+    try:
+        get_json(base + "/senton/status")
+    except (URLError, ConnectionError, OSError):
+        pass
+    else:
+        raise AssertionError("Bridge remained reachable after shutdown")
+
+    # Cold stop/rebind cycles must always return in Safe Mode with actuation locked.
+    for _ in range(20):
         restarted, restarted_base = start_phone_link("127.0.0.1", port)
         try:
-            status = get_json(restarted_base + "/senton/status")
-            assert status["safe_mode"] is True
-            assert status["pi_connected"] is False
-            assert status["speed_kmh"] == 0
+            assert_safe(get_json(restarted_base + "/senton/status"))
+            for route in ("/senton/drive", "/senton/solar-charge"):
+                blocked = expect_http_error(Request(restarted_base + route, data=b"{}", method="POST"), 403)
+                assert blocked["error"] == "command_locked"
+                assert blocked["safe_mode"] is True
         finally:
             restarted.shutdown()
             restarted.server_close()
 
-    print("Senton phone-link hard integration test passed")
+    print("Senton phone-link EXTREME hard integration test passed")
 
 
 if __name__ == "__main__":
