@@ -16,6 +16,7 @@ PORT = 8765
 PROTOCOL_VERSION = 1
 MAX_BODY_BYTES = 2048
 REQUEST_BODY_TIMEOUT_SECONDS = 3.0
+REQUEST_QUEUE_SIZE = 128
 
 _state_lock = threading.Lock()
 _state = {
@@ -54,6 +55,12 @@ def snapshot_state() -> dict:
 class SentonThreadingHTTPServer(ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = True
+    # The Android client polls frequently and reconnect storms can create a
+    # short burst of simultaneous TCP handshakes.  The stdlib default listen
+    # backlog is intentionally small, which can reset otherwise valid clients
+    # under stress.  A bounded larger queue absorbs the burst without changing
+    # any command/safety behavior.
+    request_queue_size = REQUEST_QUEUE_SIZE
 
 
 class Handler(BaseHTTPRequestHandler):
