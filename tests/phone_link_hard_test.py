@@ -157,8 +157,39 @@ def main():
             b"Content-Length: -1\r\n"
             b"Connection: close\r\n\r\n"
         )
-        assert b" 413 " in first_status_line(negative)
+        assert b" 400 " in first_status_line(negative)
         negative.close()
+
+        # Content-Length must use strict decimal HTTP framing. Python int() accepts
+        # forms such as +2 and 2_0 that are not valid HTTP field values.
+        for invalid_length in (b"+2", b"2_0"):
+            invalid = socket.create_connection(("127.0.0.1", port), timeout=3)
+            invalid.sendall(
+                b"POST /senton/test-message HTTP/1.1\r\n"
+                b"Host: 127.0.0.1\r\n"
+                b"Content-Length: " + invalid_length + b"\r\n"
+                b"Connection: close\r\n\r\n"
+                b"{}"
+            )
+            assert b" 400 " in first_status_line(invalid)
+            invalid.close()
+            assert_safe(get_json(base + "/senton/status"))
+
+        # Duplicate Content-Length fields are rejected even when one value would
+        # otherwise parse successfully. Request boundaries must be unambiguous.
+        duplicate_length = socket.create_connection(("127.0.0.1", port), timeout=3)
+        duplicate_length.sendall(
+            b"POST /senton/test-message HTTP/1.1\r\n"
+            b"Host: 127.0.0.1\r\n"
+            b"Content-Type: application/json\r\n"
+            b"Content-Length: 2\r\n"
+            b"Content-Length: 9\r\n"
+            b"Connection: close\r\n\r\n"
+            b"{}1234567"
+        )
+        assert b" 400 " in first_status_line(duplicate_length)
+        duplicate_length.close()
+        assert_safe(get_json(base + "/senton/status"))
 
         # BaseHTTPRequestHandler does not implement HTTP/1.1 chunk decoding. An
         # unsupported transfer-coded body must be rejected instead of being
