@@ -14,7 +14,7 @@ android {
         applicationId 'com.senton.link'
         minSdk 26
         targetSdk 35
-        versionCode 2300
-        versionName '2.3.0-beta'
+        versionCode 2301
+        versionName '2.3.1-beta'
     }
 }
