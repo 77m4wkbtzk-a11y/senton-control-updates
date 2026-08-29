@@ -65,8 +65,10 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(data)))
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Senton-Protocol", str(PROTOCOL_VERSION))
+        self.send_header("Connection", "close")
         self.end_headers()
         self.wfile.write(data)
+        self.close_connection = True
 
     def do_GET(self) -> None:
         if self.path == "/senton/status":
