@@ -58,6 +58,20 @@ assert '!apkUrl.startsWith("https://")' in java
 assert 'expectedSha.equalsIgnoreCase(sha256(uri))' in java
 assert 'MAX_RESPONSE_CHARS' in java
 
+# A new manifest check while an APK is already downloading must not overwrite
+# the checksum that belongs to the in-flight APK. Bind the checksum only when
+# the download itself is queued.
+assert 'startUpdateDownload(apkUrl, remoteVersion, sha)' in java
+assert 'private void startUpdateDownload(String apkUrl, String version, String sha)' in java
+check_start = java.index('private void checkForUpdateAutomatically()')
+download_start = java.index('private void startUpdateDownload(')
+handle_start = java.index('private void handleDownloadedUpdate()')
+check_block = java[check_start:download_start]
+download_block = java[download_start:handle_start]
+assert 'expectedSha = sha;' not in check_block
+assert 'expectedSha = sha;' in download_block
+assert 'expectedSha = "";' in java
+
 version_name = re.search(r"versionName\s+'([^']+)'", gradle).group(1)
 version_code = int(re.search(r"versionCode\s+(\d+)", gradle).group(1))
 assert version_name == "2.3.1-beta", version_name
