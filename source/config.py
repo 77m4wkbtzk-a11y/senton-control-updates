@@ -1,9 +1,9 @@
 APP_NAME = "Senton Control"
-APP_VERSION = "1.2.12.5"
+APP_VERSION = "1.2.12.6"
 
 # APP_VERSION above is the single authoritative version used by the app.
-# v1.2.12.5 fixes Windows backup-file lock failures by using a unique rollback
-# backup for each update while keeping SHA-256 verification and automatic restart.
+# v1.2.12.6 adds the fail-safe Senton Link phone bridge while retaining the
+# verified updater and unique rollback-backup fix from v1.2.12.5.
 UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/77m4wkbtzk-a11y/senton-control-updates/main/update.json"
 PUBLIC_UPDATE_MANIFEST_URL = UPDATE_MANIFEST_URL
 ADMIN_UPDATE_MANIFEST_URL = ""
