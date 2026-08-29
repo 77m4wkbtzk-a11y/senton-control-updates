@@ -48,24 +48,59 @@ jobs:
           curl -L --fail --retry 3 -o /tmp/gradle.zip https://services.gradle.org/distributions/gradle-8.7-bin.zip
           unzip -q /tmp/gradle.zip -d /tmp
 
-      - name: Require permanent release signing secrets
+      # Always produce a non-production test APK after the fail-safe gates pass.
+      # This APK is only for controlled launcher/app testing and is never published
+      # to the production phone update channel.
+      - name: Build hard-tested debug APK
+        working-directory: phone-app
+        run: /tmp/gradle-8.7/bin/gradle --no-daemon clean assembleDebug
+
+      - name: Verify debug APK exists
+        run: |
+          APK="phone-app/app/build/outputs/apk/debug/app-debug.apk"
+          test -s "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
+
+      - name: Upload launcher test APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Senton-Link-2.3.3-beta-launcher-test
+          path: phone-app/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Detect permanent release signing secrets
+        id: signing
         env:
           SENTON_KEYSTORE_B64: ${{ secrets.SENTON_KEYSTORE_B64 }}
         run: |
-          test -n "$SENTON_KEYSTORE_B64" || { echo "Missing SENTON_KEYSTORE_B64"; exit 1; }
-          test -n "$SENTON_KEYSTORE_PASSWORD" || { echo "Missing SENTON_KEYSTORE_PASSWORD"; exit 1; }
-          test -n "$SENTON_KEY_ALIAS" || { echo "Missing SENTON_KEY_ALIAS"; exit 1; }
-          test -n "$SENTON_KEY_PASSWORD" || { echo "Missing SENTON_KEY_PASSWORD"; exit 1; }
+          if [ -n "$SENTON_KEYSTORE_B64" ] && \
+             [ -n "$SENTON_KEYSTORE_PASSWORD" ] && \
+             [ -n "$SENTON_KEY_ALIAS" ] && \
+             [ -n "$SENTON_KEY_PASSWORD" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "Permanent release signing secrets are not configured; signed release publication will remain blocked."
+          fi
+
+      - name: Prepare permanent release signing keystore
+        if: steps.signing.outputs.available == 'true'
+        env:
+          SENTON_KEYSTORE_B64: ${{ secrets.SENTON_KEYSTORE_B64 }}
+        run: |
           printf '%s' "$SENTON_KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/senton-link-release.jks"
           test -s "$RUNNER_TEMP/senton-link-release.jks"
           chmod 600 "$RUNNER_TEMP/senton-link-release.jks"
           echo "SENTON_KEYSTORE_FILE=$RUNNER_TEMP/senton-link-release.jks" >> "$GITHUB_ENV"
 
       - name: Build signed release APK
+        if: steps.signing.outputs.available == 'true'
         working-directory: phone-app
-        run: /tmp/gradle-8.7/bin/gradle --no-daemon clean assembleRelease
+        run: /tmp/gradle-8.7/bin/gradle --no-daemon assembleRelease
 
       - name: Verify APK signature and certificate
+        if: steps.signing.outputs.available == 'true'
         run: |
           APK="phone-app/app/build/outputs/apk/release/app-release.apk"
           test -s "$APK"
@@ -73,6 +108,7 @@ jobs:
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify "$APK"
 
       - name: Upload signed installable APK artifact
+        if: steps.signing.outputs.available == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: Senton-Link-2.3.3-beta-signed-release
@@ -81,6 +117,7 @@ jobs:
           retention-days: 14
 
       - name: Publish Senton Link 2.3.3-beta
+        if: steps.signing.outputs.available == 'true'
         run: |
           git fetch origin main
           remote_sha=$(git rev-parse origin/main)
@@ -100,7 +137,7 @@ jobs:
             "channel": "beta",
             "priority": "high",
             "mandatory": false,
-            "notes": "Senton Link 2.3.3-beta signed release: closable update progress page, Windows Link removed, temporary test mode only during explicit tests, and SHA-256 verified updater."
+            "notes": "Senton Link 2.3.3-beta signed release: dedicated launcher mode foundation, closable update progress page, temporary explicit test mode, and SHA-256 verified updater."
           }
           EOF
           git config user.name "github-actions[bot]"
@@ -108,3 +145,9 @@ jobs:
           git add phone-releases/Senton-Link.apk phone-update.json
           git diff --cached --quiet || git commit -m "Publish signed Senton Link 2.3.3-beta"
           git push origin main
+
+      - name: Signed release remains safely blocked
+        if: steps.signing.outputs.available != 'true'
+        run: |
+          echo "Launcher test APK built successfully."
+          echo "Production phone update was NOT published because permanent release signing secrets are missing."
