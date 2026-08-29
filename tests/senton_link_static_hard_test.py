@@ -3,6 +3,7 @@ import re
 
 ROOT = Path(__file__).resolve().parents[1]
 java = (ROOT / "phone-app/app/src/main/java/au/com/senton/link/MainActivity.java").read_text(encoding="utf-8")
+test_mode_java = (ROOT / "phone-app/app/src/main/java/au/com/senton/link/TestModeActivity.java").read_text(encoding="utf-8")
 manifest = (ROOT / "phone-app/app/src/main/AndroidManifest.xml").read_text(encoding="utf-8")
 gradle = (ROOT / "phone-app/app/build.gradle").read_text(encoding="utf-8")
 
@@ -28,6 +29,22 @@ assert 'UNDER TESTING' in java
 assert 'KEEP USB CONNECTED' in java
 assert 'testing.setVisibility(BuildConfig.TEST_MODE ? View.VISIBLE : View.GONE)' in java
 assert 'BuildConfig.TEST_MODE ? "TESTING" : "OK"' in java
+
+# The dedicated full-screen test launcher must preserve the same fail-safe behavior.
+assert 'android:name=".TestModeActivity"' in manifest
+assert '<action android:name="android.intent.action.MAIN" />' in manifest
+assert '<category android:name="android.intent.category.LAUNCHER" />' in manifest
+assert 'WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON' in test_mode_java
+for required_test_text in [
+    'UNDER TESTING',
+    'DO NOT LOCK THE SCREEN',
+    'KEEP USB CONNECTED',
+    'TESTING IN PROGRESS',
+    'DRIVE CONTROL LOCKED',
+    'SOLAR CHARGE LOCKED',
+    'Safe Mode Active',
+]:
+    assert required_test_text in test_mode_java, required_test_text
 
 # Responses fail closed: wrong service/protocol or safe_mode=false cannot be trusted.
 assert '"Senton Control".equals(json.optString("service", ""))' in java
