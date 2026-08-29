@@ -20,6 +20,15 @@ assert 'setReadTimeout(3000)' in java
 assert 'setPcDisconnected' in java
 assert 'Speed          0 km/h' in java
 
+# Test Mode must be explicit, visible and keep the test phone awake while the app is active.
+assert "buildConfigField 'boolean', 'TEST_MODE', 'true'" in gradle
+assert 'BuildConfig.TEST_MODE' in java
+assert 'WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON' in java
+assert 'UNDER TESTING' in java
+assert 'KEEP USB CONNECTED' in java
+assert 'testing.setVisibility(BuildConfig.TEST_MODE ? View.VISIBLE : View.GONE)' in java
+assert 'BuildConfig.TEST_MODE ? "TESTING" : "OK"' in java
+
 # Responses fail closed: wrong service/protocol or safe_mode=false cannot be trusted.
 assert '"Senton Control".equals(json.optString("service", ""))' in java
 assert 'json.optInt("protocol", -1) != SENTON_PROTOCOL' in java
