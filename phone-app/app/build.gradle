@@ -17,4 +17,47 @@ android {
         versionCode 2303
         versionName '2.3.3-beta'
     }
+
+    def releaseStoreFile = System.getenv('SENTON_KEYSTORE_FILE')
+    def releaseStorePassword = System.getenv('SENTON_KEYSTORE_PASSWORD')
+    def releaseKeyAlias = System.getenv('SENTON_KEY_ALIAS')
+    def releaseKeyPassword = System.getenv('SENTON_KEY_PASSWORD')
+
+    signingConfigs {
+        release {
+            if (releaseStoreFile) storeFile file(releaseStoreFile)
+            if (releaseStorePassword) storePassword releaseStorePassword
+            if (releaseKeyAlias) keyAlias releaseKeyAlias
+            if (releaseKeyPassword) keyPassword releaseKeyPassword
+            enableV1Signing true
+            enableV2Signing true
+            enableV3Signing true
+            enableV4Signing true
+        }
+    }
+
+    buildTypes {
+        debug {
+            debuggable true
+        }
+        release {
+            debuggable false
+            minifyEnabled false
+            shrinkResources false
+            signingConfig signingConfigs.release
+        }
+    }
+}
+
+gradle.taskGraph.whenReady { graph ->
+    if (graph.allTasks.any { it.name.toLowerCase().contains('release') }) {
+        def missing = []
+        if (!System.getenv('SENTON_KEYSTORE_FILE')) missing << 'SENTON_KEYSTORE_FILE'
+        if (!System.getenv('SENTON_KEYSTORE_PASSWORD')) missing << 'SENTON_KEYSTORE_PASSWORD'
+        if (!System.getenv('SENTON_KEY_ALIAS')) missing << 'SENTON_KEY_ALIAS'
+        if (!System.getenv('SENTON_KEY_PASSWORD')) missing << 'SENTON_KEY_PASSWORD'
+        if (!missing.isEmpty()) {
+            throw new GradleException('Release signing is mandatory. Missing: ' + missing.join(', '))
+        }
+    }
 }
