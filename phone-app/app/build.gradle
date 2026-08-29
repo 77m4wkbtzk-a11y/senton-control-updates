@@ -18,12 +18,23 @@ android {
         versionName '2.3.3-beta'
     }
 
+    def testStoreFile = System.getenv('SENTON_TEST_KEYSTORE_FILE')
     def releaseStoreFile = System.getenv('SENTON_KEYSTORE_FILE')
     def releaseStorePassword = System.getenv('SENTON_KEYSTORE_PASSWORD')
     def releaseKeyAlias = System.getenv('SENTON_KEY_ALIAS')
     def releaseKeyPassword = System.getenv('SENTON_KEY_PASSWORD')
 
     signingConfigs {
+        ciTest {
+            if (testStoreFile) storeFile file(testStoreFile)
+            storePassword 'android'
+            keyAlias 'androiddebugkey'
+            keyPassword 'android'
+            enableV1Signing true
+            enableV2Signing true
+            enableV3Signing true
+            enableV4Signing true
+        }
         release {
             if (releaseStoreFile) storeFile file(releaseStoreFile)
             if (releaseStorePassword) storePassword releaseStorePassword
@@ -39,6 +50,7 @@ android {
     buildTypes {
         debug {
             debuggable true
+            if (testStoreFile) signingConfig signingConfigs.ciTest
         }
         release {
             debuggable false
