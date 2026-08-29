@@ -86,6 +86,14 @@ class Handler(BaseHTTPRequestHandler):
             self.close_connection = True
 
     def _read_json_body(self):
+        # BaseHTTPRequestHandler does not decode HTTP/1.1 transfer codings. Reject
+        # them explicitly rather than treating a chunked body as an empty JSON
+        # request when Content-Length is absent. This keeps request framing
+        # unambiguous and fail-closed.
+        if self.headers.get("Transfer-Encoding"):
+            self._json(400, {"error": "unsupported_transfer_encoding", "safe_mode": True})
+            return None
+
         raw_length = self.headers.get("Content-Length", "0")
         try:
             length = int(raw_length)
