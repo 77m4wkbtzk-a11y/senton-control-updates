@@ -34,21 +34,23 @@ for required_ui in [
 ]:
     assert required_ui in update_java, required_ui
 
-# Cold launch / reconnect / telemetry refresh hardening.
-assert 'SharedPreferences' in main_java
-assert 'KEY_PC_ADDRESS' in main_java
-assert 'pollHandler.postDelayed(this, 3000)' in main_java
-assert 'pcRequestInFlight.compareAndSet(false, true)' in main_java
-assert 'setConnectTimeout(3000)' in main_java
-assert 'setReadTimeout(3000)' in main_java
-assert 'setPcDisconnected' in main_java
+# The legacy Android-side Windows-link panel was intentionally removed from the dashboard.
+# Keep that network/command surface absent while preserving the fail-safe idle dashboard state.
+for removed in [
+    'KEY_PC_ADDRESS',
+    'DEFAULT_PC_URL',
+    'pcRequestInFlight',
+    'pollHandler.postDelayed(this, 3000)',
+    'connectToPc(',
+    'sendTestMessage(',
+    'setPcDisconnected(',
+    'Untrusted or unsafe PC response',
+]:
+    assert removed not in main_java, removed
 assert 'Speed          0 km/h' in main_java
-
-# Responses fail closed: wrong service/protocol or safe_mode=false cannot be trusted.
-assert '"Senton Control".equals(json.optString("service", ""))' in main_java
-assert 'json.optInt("protocol", -1) != SENTON_PROTOCOL' in main_java
-assert 'json.optBoolean("safe_mode", false)' in main_java
-assert 'Untrusted or unsafe PC response' in main_java
+assert 'SENTON PI DISCONNECTED — SAFE MODE' in main_java
+assert 'Vehicle link    Disconnected' in main_java
+assert 'Safety mode     Active' in main_java
 
 # Vehicle and charger actuation must stay disabled until authenticated Pi/car work exists.
 for forbidden in [
@@ -100,6 +102,10 @@ assert 'COLUMN_BYTES_DOWNLOADED_SO_FAR' in update_java
 assert 'COLUMN_TOTAL_SIZE_BYTES' in update_java
 assert 'refreshDownloadProgress()' in update_java
 assert 'handler.postDelayed(this, 1000)' in update_java
+
+# The update page may keep its own screen awake while visible, but no legacy Test Mode is revived.
+assert 'WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON' in update_java
+assert 'finish()' in update_java  # user-initiated BACK TO DASHBOARD only
 
 # A new manifest check while an APK is already downloading must not overwrite
 # the checksum that belongs to the in-flight APK.
