@@ -5,6 +5,7 @@ on:
     paths:
       - 'phone-app/**'
       - 'tests/senton_link_static_hard_test.py'
+      - 'tests/senton_link_emulator_hard_test.sh'
       - '.github/workflows/build-senton-link.yml'
   workflow_dispatch:
 
@@ -74,6 +75,16 @@ jobs:
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
           cert=$("$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs "$APK" | awk -F': ' '/certificate SHA-256 digest/ {print tolower($2); exit}')
           test "$cert" = "26f74eda042a9f7b17cf11d4cd5181b85c8958d87bc59362d0a7d9647480776e"
+
+      - name: Hard-test Android runtime in disposable emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          disable-animations: true
+          script: bash tests/senton_link_emulator_hard_test.sh phone-app/app/build/outputs/apk/debug/app-debug.apk
 
       - name: Upload launcher test APK artifact
         uses: actions/upload-artifact@v4
