@@ -1,8 +1,10 @@
 {
-  "version": "0.2.1",
-  "versionCode": 201,
+  "version": "2.1",
+  "versionCode": 2100,
   "download_url": "https://raw.githubusercontent.com/77m4wkbtzk-a11y/senton-control-updates/main/phone-releases/Senton-Link.apk",
-  "sha256": "460f6ec0eb4b53fc4a36d804a91ee3587e560643dd319b9c6ad3d7979113825a",
-  "channel": "test",
-  "notes": "Senton Link v0.2.1 updater test build."
+  "sha256": "fa17a06ec8a4b48e364fd5032a107416d53b6e87d9461a8a975472fd51705b90",
+  "channel": "priority-override",
+  "priority": "critical",
+  "mandatory": true,
+  "notes": "Priority override update: Senton Link 2.1 updater test."
 }
