@@ -76,6 +76,17 @@ jobs:
           cert=$("$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs "$APK" | awk -F': ' '/certificate SHA-256 digest/ {print tolower($2); exit}')
           test "$cert" = "26f74eda042a9f7b17cf11d4cd5181b85c8958d87bc59362d0a7d9647480776e"
 
+      # GitHub-hosted Linux exposes /dev/kvm but the runner user may not have
+      # permission by default. Granting access only affects this disposable CI VM
+      # and prevents the Android emulator from falling back to unstable/very slow TCG.
+      - name: Enable KVM for disposable emulator
+        run: |
+          test -e /dev/kvm
+          sudo chmod 666 /dev/kvm
+          test -r /dev/kvm
+          test -w /dev/kvm
+          ls -l /dev/kvm
+
       - name: Hard-test Android runtime in disposable emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -84,6 +95,7 @@ jobs:
           target: google_apis
           profile: pixel_6
           disable-animations: true
+          disable-linux-hw-accel: false
           script: bash tests/senton_link_emulator_hard_test.sh phone-app/app/build/outputs/apk/debug/app-debug.apk
 
       - name: Upload launcher test APK artifact
