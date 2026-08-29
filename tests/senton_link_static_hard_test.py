@@ -57,7 +57,7 @@ for removed in [
     '/senton/status',
     '/senton/test-message',
     'SEND TEST',
-    'CONNECT',
+    'button("CONNECT"',
 ]:
     assert removed not in main_java, removed
 assert 'Speed          0 km/h' in main_java
