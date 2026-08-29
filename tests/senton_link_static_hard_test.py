@@ -151,6 +151,26 @@ assert verify_pos < installer_pos
 assert 'Update blocked: SHA-256 verification failed' in update_java
 assert 'FLAG_GRANT_READ_URI_PERMISSION' in update_java
 
+# Android unknown-app install permission must be handled explicitly and must not discard a verified APK before permission is granted.
+for required_permission_flow in [
+    'canRequestPackageInstalls()',
+    'Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES',
+    'Uri.parse("package:" + getPackageName())',
+    'INSTALL PERMISSION REQUIRED',
+    'Allow from this source',
+    'if (!canInstallPackages())',
+    'openInstallPermissionSettings()',
+    'if (downloadId != -1 && canInstallPackages() && isDownloadSuccessful())',
+]:
+    assert required_permission_flow in update_java, required_permission_flow
+launch_start = update_java.index('private void launchInstaller(Uri uri)')
+launch_end = update_java.index('private String sha256(Uri uri)')
+launch_block = update_java[launch_start:launch_end]
+permission_gate = launch_block.index('if (!canInstallPackages())')
+clear_state = launch_block.index('clearPendingDownloadState();')
+assert permission_gate < clear_state
+assert 'openInstallPermissionSettings();\n            return;' in launch_block
+
 # Required visible lifecycle states.
 for required_status in [
     'CHECKING FOR UPDATE',
@@ -162,6 +182,7 @@ for required_status in [
     'Update in progress — verified, opening Android installer…',
     'UPDATE DOWNLOAD FAILED',
     'UPDATE VERIFICATION FAILED',
+    'INSTALL PERMISSION REQUIRED',
 ]:
     assert required_status in update_java, required_status
 
