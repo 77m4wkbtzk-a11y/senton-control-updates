@@ -3,13 +3,23 @@ import re
 
 ROOT = Path(__file__).resolve().parents[1]
 java = (ROOT / "phone-app/app/src/main/java/au/com/senton/link/MainActivity.java").read_text(encoding="utf-8")
-test_mode_java = (ROOT / "phone-app/app/src/main/java/au/com/senton/link/TestModeActivity.java").read_text(encoding="utf-8")
 manifest = (ROOT / "phone-app/app/src/main/AndroidManifest.xml").read_text(encoding="utf-8")
 gradle = (ROOT / "phone-app/app/build.gradle").read_text(encoding="utf-8")
 
 # The local Windows bridge is intentionally HTTP during beta/USB/LAN testing.
 assert 'android:usesCleartextTraffic="true"' in manifest
 assert 'android.permission.INTERNET' in manifest
+
+# Normal dashboard must be the only launcher and legacy Test Mode must be gone.
+assert 'android:name=".MainActivity"' in manifest
+assert '<action android:name="android.intent.action.MAIN" />' in manifest
+assert '<category android:name="android.intent.category.LAUNCHER" />' in manifest
+assert 'TestModeActivity' not in manifest
+assert 'TEST_MODE' not in gradle
+assert 'BuildConfig.TEST_MODE' not in java
+assert 'UNDER TESTING' not in java
+assert 'KEEP USB CONNECTED' not in java
+assert not (ROOT / "phone-app/app/src/main/java/au/com/senton/link/TestModeActivity.java").exists()
 
 # Cold launch / reconnect / telemetry refresh hardening.
 assert 'SharedPreferences' in java
@@ -20,31 +30,6 @@ assert 'setConnectTimeout(3000)' in java
 assert 'setReadTimeout(3000)' in java
 assert 'setPcDisconnected' in java
 assert 'Speed          0 km/h' in java
-
-# Test Mode must be explicit, visible and keep the test phone awake while the app is active.
-assert "buildConfigField 'boolean', 'TEST_MODE', 'true'" in gradle
-assert 'BuildConfig.TEST_MODE' in java
-assert 'WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON' in java
-assert 'UNDER TESTING' in java
-assert 'KEEP USB CONNECTED' in java
-assert 'testing.setVisibility(BuildConfig.TEST_MODE ? View.VISIBLE : View.GONE)' in java
-assert 'BuildConfig.TEST_MODE ? "TESTING" : "OK"' in java
-
-# The dedicated full-screen test launcher must preserve the same fail-safe behavior.
-assert 'android:name=".TestModeActivity"' in manifest
-assert '<action android:name="android.intent.action.MAIN" />' in manifest
-assert '<category android:name="android.intent.category.LAUNCHER" />' in manifest
-assert 'WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON' in test_mode_java
-for required_test_text in [
-    'UNDER TESTING',
-    'DO NOT LOCK THE SCREEN',
-    'KEEP USB CONNECTED',
-    'TESTING IN PROGRESS',
-    'DRIVE CONTROL LOCKED',
-    'SOLAR CHARGE LOCKED',
-    'Safe Mode Active',
-]:
-    assert required_test_text in test_mode_java, required_test_text
 
 # Responses fail closed: wrong service/protocol or safe_mode=false cannot be trusted.
 assert '"Senton Control".equals(json.optString("service", ""))' in java
