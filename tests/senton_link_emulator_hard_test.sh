@@ -7,8 +7,22 @@ MAIN="com.senton.link/.MainActivity"
 TMP="${RUNNER_TEMP:-/tmp}/senton-link-emulator-test"
 mkdir -p "$TMP"
 
+diagnostics() {
+  echo "--- Senton emulator diagnostics ---" >&2
+  adb shell dumpsys activity activities > "$TMP/activity-dump.txt" 2>&1 || true
+  adb shell dumpsys window > "$TMP/window-dump.txt" 2>&1 || true
+  adb exec-out screencap -p > "$TMP/screenshot.png" 2>/dev/null || true
+  if [ -s "$TMP/window.xml" ]; then
+    cat "$TMP/window.xml" >&2 || true
+  fi
+  echo "--- top resumed activity ---" >&2
+  grep -E 'mResumedActivity|topResumedActivity|ResumedActivity' "$TMP/activity-dump.txt" >&2 || true
+  echo "--- end diagnostics ---" >&2
+}
+
 die() {
   echo "SENTON EMULATOR HARD TEST FAILED: $*" >&2
+  diagnostics
   exit 1
 }
 
@@ -18,27 +32,75 @@ wait_boot() {
 }
 
 dump_ui() {
-  adb shell uiautomator dump /sdcard/senton-window.xml >/dev/null
-  adb pull /sdcard/senton-window.xml "$TMP/window.xml" >/dev/null
+  local attempt
+  for attempt in 1 2 3; do
+    if adb shell uiautomator dump --compressed /sdcard/senton-window.xml >/dev/null 2>&1 \
+      && adb pull /sdcard/senton-window.xml "$TMP/window.xml" >/dev/null 2>&1 \
+      && [ -s "$TMP/window.xml" ]; then
+      return 0
+    fi
+    sleep 0.25
+  done
+  return 1
 }
 
-require_text() {
+ui_has_text() {
   local value="$1"
-  dump_ui
-  grep -Fq "$value" "$TMP/window.xml" || die "UI text missing: $value"
+  dump_ui || return 1
+  grep -Fq -- "$value" "$TMP/window.xml"
 }
 
-forbid_text() {
+scroll_to_top() {
+  local _
+  for _ in 1 2 3 4 5; do
+    adb shell input swipe 540 500 540 1500 100 >/dev/null 2>&1 || true
+  done
+  sleep 0.15
+}
+
+scroll_forward() {
+  adb shell input swipe 540 1500 540 500 140 >/dev/null 2>&1 || true
+  sleep 0.12
+}
+
+require_text_current() {
   local value="$1"
-  dump_ui
-  if grep -Fq "$value" "$TMP/window.xml"; then
+  local _
+  for _ in $(seq 1 20); do
+    if ui_has_text "$value"; then
+      return 0
+    fi
+    sleep 0.25
+  done
+  die "UI text missing from current viewport: $value"
+}
+
+require_text_anywhere() {
+  local value="$1"
+  local pass
+  scroll_to_top
+  for pass in $(seq 1 10); do
+    if ui_has_text "$value"; then
+      scroll_to_top
+      return 0
+    fi
+    scroll_forward
+  done
+  scroll_to_top
+  die "UI text missing after scrolling dashboard: $value"
+}
+
+forbid_text_current() {
+  local value="$1"
+  dump_ui || die "Unable to dump UI while checking forbidden text: $value"
+  if grep -Fq -- "$value" "$TMP/window.xml"; then
     die "Unexpected UI text present: $value"
   fi
 }
 
-require_disabled_button() {
+button_state_in_view() {
   local label="$1"
-  dump_ui
+  dump_ui || return 3
   python3 - "$TMP/window.xml" "$label" <<'PY'
 import sys
 import xml.etree.ElementTree as ET
@@ -46,18 +108,38 @@ path, label = sys.argv[1:]
 root = ET.parse(path).getroot()
 for node in root.iter('node'):
     if node.attrib.get('text') == label:
-        if node.attrib.get('enabled') != 'false':
-            raise SystemExit(f'{label} unexpectedly enabled')
-        raise SystemExit(0)
-raise SystemExit(f'{label} button missing')
+        if node.attrib.get('enabled') == 'false':
+            raise SystemExit(0)
+        raise SystemExit(2)
+raise SystemExit(3)
 PY
 }
 
-tap_text() {
+require_disabled_button_anywhere() {
   local label="$1"
-  dump_ui
-  local xy
-  xy=$(python3 - "$TMP/window.xml" "$label" <<'PY'
+  local pass rc
+  scroll_to_top
+  for pass in $(seq 1 10); do
+    if button_state_in_view "$label"; then
+      scroll_to_top
+      return 0
+    else
+      rc=$?
+      if [ "$rc" -eq 2 ]; then
+        scroll_to_top
+        die "$label unexpectedly enabled"
+      fi
+    fi
+    scroll_forward
+  done
+  scroll_to_top
+  die "$label button missing after scrolling dashboard"
+}
+
+control_xy_in_view() {
+  local label="$1"
+  dump_ui || return 1
+  python3 - "$TMP/window.xml" "$label" <<'PY'
 import re
 import sys
 import xml.etree.ElementTree as ET
@@ -67,28 +149,48 @@ for node in root.iter('node'):
     if node.attrib.get('text') == label:
         m = re.fullmatch(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]', node.attrib.get('bounds', ''))
         if not m:
-            raise SystemExit(f'No bounds for {label}')
+            raise SystemExit(1)
         x1, y1, x2, y2 = map(int, m.groups())
         print((x1 + x2) // 2, (y1 + y2) // 2)
         raise SystemExit(0)
-raise SystemExit(f'{label} control missing')
+raise SystemExit(1)
 PY
-)
-  adb shell input tap $xy
+}
+
+tap_text_anywhere() {
+  local label="$1"
+  local pass xy
+  scroll_to_top
+  for pass in $(seq 1 10); do
+    if xy=$(control_xy_in_view "$label"); then
+      adb shell input tap $xy
+      sleep 0.15
+      return 0
+    fi
+    scroll_forward
+  done
+  die "$label control missing after scrolling"
 }
 
 require_safe_dashboard() {
-  require_text "SENTON PI DISCONNECTED — SAFE MODE"
-  require_text "Safety mode     Active"
-  require_disabled_button "DRIVE"
-  require_disabled_button "START CHARGE"
-  require_disabled_button "STOP CHARGE"
+  # Wait for the freshly launched Activity to finish rendering before testing it.
+  scroll_to_top
+  require_text_current "SENTON PI DISCONNECTED"
+  require_text_current "SAFE MODE"
+  require_text_current "VEHICLE CONTROLS LOCKED"
+  require_text_anywhere "Safety mode     Active"
+  require_disabled_button_anywhere "DRIVE"
+  require_disabled_button_anywhere "START CHARGE"
+  require_disabled_button_anywhere "STOP CHARGE"
+  scroll_to_top
 }
 
 require_test_banner() {
-  require_text "UNDER TESTING"
-  require_text "TEMPORARY HARD-TEST SESSION"
-  require_text "VEHICLE CONTROLS LOCKED"
+  scroll_to_top
+  require_text_current "UNDER TESTING"
+  require_text_anywhere "TEMPORARY HARD-TEST SESSION"
+  require_text_anywhere "VEHICLE CONTROLS LOCKED"
+  scroll_to_top
 }
 
 require_keep_screen_on() {
@@ -129,7 +231,7 @@ for _ in $(seq 1 20); do
   adb shell am force-stop "$PKG"
   start_normal
   require_safe_dashboard
-  forbid_text "UNDER TESTING"
+  forbid_text_current "UNDER TESTING"
   adb shell am start -W -n "$MAIN" >/dev/null
   require_safe_dashboard
 done
@@ -159,19 +261,19 @@ done
 adb shell am force-stop "$PKG"
 start_normal
 require_safe_dashboard
-forbid_text "UNDER TESTING"
+forbid_text_current "UNDER TESTING"
 
 # Exercise updater failure/retry behavior by routing only the disposable
 # emulator through an unreachable proxy. Open UPDATE through the real app UI so
 # the non-exported update Activity is tested the same way a user reaches it.
 adb shell settings put global http_proxy 127.0.0.1:9
-tap_text "UPDATE"
+tap_text_anywhere "UPDATE"
 sleep 12
-require_text "UPDATE CHECK FAILED"
+require_text_anywhere "UPDATE CHECK FAILED"
 
 # Repeated taps must not crash or create overlapping unsafe UI state.
 for _ in $(seq 1 8); do
-  tap_text "CHECK FOR UPDATE"
+  tap_text_anywhere "CHECK FOR UPDATE"
 done
 sleep 1
 adb shell pidof "$PKG" >/dev/null || die "Updater process died during failed retry burst"
@@ -181,13 +283,13 @@ adb shell pidof "$PKG" >/dev/null || die "Updater process died during failed ret
 # of those outcomes may crash the app or change fail-closed vehicle controls.
 adb shell settings put global http_proxy :0
 for _ in $(seq 1 8); do
-  tap_text "CHECK FOR UPDATE"
+  tap_text_anywhere "CHECK FOR UPDATE"
 done
 sleep 12
 adb shell pidof "$PKG" >/dev/null || die "Updater process died after network restoration"
 
 # Close updater through its real UI and verify the dashboard is still locked.
-tap_text "BACK TO DASHBOARD"
+tap_text_anywhere "BACK TO DASHBOARD"
 sleep 0.5
 require_safe_dashboard
 
