@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - 'phone-app/**'
+      - 'tests/senton_link_static_hard_test.py'
       - '.github/workflows/build-senton-link.yml'
   workflow_dispatch:
 
@@ -20,6 +21,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Hard-test Android fail-safe source gates
+        run: python3 tests/senton_link_static_hard_test.py
       - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
@@ -38,7 +41,7 @@ jobs:
       - name: Build debug APK
         working-directory: phone-app
         run: /tmp/gradle-8.7/bin/gradle --no-daemon assembleDebug
-      - name: Publish Senton Link 2.3.0-beta
+      - name: Publish Senton Link 2.3.1-beta
         run: |
           git fetch origin main
           remote_sha=$(git rev-parse origin/main)
@@ -51,18 +54,18 @@ jobs:
           sha=$(sha256sum phone-releases/Senton-Link.apk | awk '{print $1}')
           cat > phone-update.json <<EOF
           {
-            "version": "2.3.0-beta",
-            "versionCode": 2300,
+            "version": "2.3.1-beta",
+            "versionCode": 2301,
             "download_url": "https://raw.githubusercontent.com/77m4wkbtzk-a11y/senton-control-updates/main/phone-releases/Senton-Link.apk",
             "sha256": "$sha",
             "channel": "beta",
             "priority": "normal",
             "mandatory": false,
-            "notes": "Senton Link 2.3.0-beta: phone-to-Windows Senton Control bridge, PC connection status, telemetry sync and safe test messaging."
+            "notes": "Senton Link 2.3.1-beta hard-test build: automatic PC reconnect/telemetry polling, persisted PC address, fail-closed protocol checks, repeated-update protection, and locked vehicle/charge controls."
           }
           EOF
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add phone-releases/Senton-Link.apk phone-update.json
-          git diff --cached --quiet || git commit -m "Publish Senton Link 2.3.0-beta"
+          git diff --cached --quiet || git commit -m "Publish Senton Link 2.3.1-beta"
           git push origin main
