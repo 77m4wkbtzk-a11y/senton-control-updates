@@ -56,9 +56,9 @@ class SentonThreadingHTTPServer(ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = True
     # The Android client polls frequently and reconnect storms can create a
-    # short burst of simultaneous TCP handshakes.  The stdlib default listen
+    # short burst of simultaneous TCP handshakes. The stdlib default listen
     # backlog is intentionally small, which can reset otherwise valid clients
-    # under stress.  A bounded larger queue absorbs the burst without changing
+    # under stress. A bounded larger queue absorbs the burst without changing
     # any command/safety behavior.
     request_queue_size = REQUEST_QUEUE_SIZE
 
@@ -69,15 +69,22 @@ class Handler(BaseHTTPRequestHandler):
 
     def _json(self, code: int, payload: dict) -> None:
         data = json.dumps(payload, separators=(",", ":")).encode("utf-8")
-        self.send_response(code)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Content-Length", str(len(data)))
-        self.send_header("Cache-Control", "no-store")
-        self.send_header("X-Senton-Protocol", str(PROTOCOL_VERSION))
-        self.send_header("Connection", "close")
-        self.end_headers()
-        self.wfile.write(data)
-        self.close_connection = True
+        try:
+            self.send_response(code)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Senton-Protocol", str(PROTOCOL_VERSION))
+            self.send_header("Connection", "close")
+            self.end_headers()
+            self.wfile.write(data)
+        except (BrokenPipeError, ConnectionResetError, socket.timeout, OSError):
+            # Force-stop, network-loss and rapid reconnect tests deliberately
+            # drop clients mid-response. Treat an already-gone client as a
+            # normal disconnect rather than emitting an exception traceback.
+            pass
+        finally:
+            self.close_connection = True
 
     def do_GET(self) -> None:
         if self.path == "/senton/status":
