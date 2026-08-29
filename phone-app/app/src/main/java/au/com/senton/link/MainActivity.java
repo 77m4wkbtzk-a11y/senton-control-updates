@@ -15,7 +15,9 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.Gravity;
+import android.view.View;
 import android.view.ViewGroup;
+import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
@@ -72,6 +74,9 @@ public class MainActivity extends Activity {
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        if (BuildConfig.TEST_MODE) {
+            getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        }
         if (Build.VERSION.SDK_INT >= 33) registerReceiver(downloadReceiver, new IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE), RECEIVER_NOT_EXPORTED);
         else registerReceiver(downloadReceiver, new IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE));
 
@@ -86,10 +91,11 @@ public class MainActivity extends Activity {
         root.addView(text("SENTON LINK", 30, Color.WHITE, true));
         root.addView(text("v" + BuildConfig.VERSION_NAME, 13, Color.rgb(38,139,255), true));
 
-        TextView testing = text("⚠ UNDER TESTING ⚠\nDO NOT MOVE OR TURN OFF THIS PHONE", 18, Color.WHITE, true);
+        TextView testing = text("⚠ UNDER TESTING ⚠\nDO NOT MOVE OR TURN OFF THIS PHONE\nKEEP USB CONNECTED", 18, Color.WHITE, true);
         testing.setGravity(Gravity.CENTER);
         testing.setPadding(dp(14), dp(14), dp(14), dp(14));
         testing.setBackgroundColor(Color.rgb(180, 35, 35));
+        testing.setVisibility(BuildConfig.TEST_MODE ? View.VISIBLE : View.GONE);
         root.addView(testing, mt(14));
 
         root.addView(text("● SENTON PI DISCONNECTED — SAFE MODE", 15, Color.rgb(255,190,70), true), mt(16));
@@ -135,7 +141,8 @@ public class MainActivity extends Activity {
         charge.addView(button("STOP CHARGE", false), weight());
         root.addView(charge, mt(8));
 
-        root.addView(panel("SYSTEM\n\nApp status      TESTING\nUpdate channel  Beta\nVehicle link    Disconnected\nSafety mode     Active"), mt(16));
+        String appStatus = BuildConfig.TEST_MODE ? "TESTING" : "OK";
+        root.addView(panel("SYSTEM\n\nApp status      " + appStatus + "\nUpdate channel  Beta\nVehicle link    Disconnected\nSafety mode     Active"), mt(16));
         TextView footer = text("Senton Link " + BuildConfig.VERSION_NAME + " • com.senton.link", 12, Color.rgb(90,115,140), false);
         footer.setGravity(Gravity.CENTER);
         root.addView(footer, mt(22));
