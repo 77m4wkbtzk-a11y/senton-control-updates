@@ -160,6 +160,22 @@ def main():
         assert b" 413 " in first_status_line(negative)
         negative.close()
 
+        # BaseHTTPRequestHandler does not implement HTTP/1.1 chunk decoding. An
+        # unsupported transfer-coded body must be rejected instead of being
+        # accepted as an empty request when Content-Length is absent.
+        chunked = socket.create_connection(("127.0.0.1", port), timeout=3)
+        chunked.sendall(
+            b"POST /senton/test-message HTTP/1.1\r\n"
+            b"Host: 127.0.0.1\r\n"
+            b"Content-Type: application/json\r\n"
+            b"Transfer-Encoding: chunked\r\n"
+            b"Connection: close\r\n\r\n"
+            b"2\r\n{}\r\n0\r\n\r\n"
+        )
+        assert b" 400 " in first_status_line(chunked)
+        chunked.close()
+        assert_safe(get_json(base + "/senton/status"))
+
         truncated = socket.create_connection(("127.0.0.1", port), timeout=3)
         truncated.sendall(
             b"POST /senton/test-message HTTP/1.1\r\n"
