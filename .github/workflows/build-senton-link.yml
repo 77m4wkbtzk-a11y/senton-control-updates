@@ -58,16 +58,17 @@ jobs:
           sha=$(sha256sum phone-releases/Senton-Link.apk | awk '{print $1}')
           cat > phone-update.json <<EOF
           {
-            "version": "0.1.0",
+            "version": "0.2.1",
+            "versionCode": 201,
             "download_url": "https://raw.githubusercontent.com/77m4wkbtzk-a11y/senton-control-updates/main/phone-releases/Senton-Link.apk",
             "sha256": "$sha",
-            "channel": "beta",
-            "notes": "First Senton Link Android beta: dashboard and solar-charge UI in safe disconnected mode."
+            "channel": "test",
+            "notes": "Senton Link v0.2.1 updater test build."
           }
           EOF
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add phone-releases/Senton-Link.apk phone-update.json
-          git diff --cached --quiet || git commit -m "Publish Senton Link Android beta 0.1.0"
+          git diff --cached --quiet || git commit -m "Publish Senton Link Android test 0.2.1"
           git push origin main
