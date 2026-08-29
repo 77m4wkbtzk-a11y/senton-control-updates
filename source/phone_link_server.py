@@ -18,40 +18,22 @@ MAX_BODY_BYTES = 2048
 REQUEST_BODY_TIMEOUT_SECONDS = 3.0
 REQUEST_QUEUE_SIZE = 128
 
-_state_lock = threading.Lock()
-_state = {
-    "service": "Senton Control",
-    "protocol": PROTOCOL_VERSION,
-    "pc_connected": True,
-    "pi_connected": False,
-    "safe_mode": True,
-    "speed_kmh": 0,
-    "battery_v": None,
-    "signal": None,
-    "message": "Windows link ready",
-    "preview_active": False,
-    "updated": 0,
-}
 
-
-def reset_transient_state() -> None:
-    """Start every bridge instance from a clean, fail-closed status snapshot."""
-    with _state_lock:
-        _state.update(
-            {
-                "service": "Senton Control",
-                "protocol": PROTOCOL_VERSION,
-                "pc_connected": True,
-                "pi_connected": False,
-                "safe_mode": True,
-                "speed_kmh": 0,
-                "battery_v": None,
-                "signal": None,
-                "message": "Windows link ready",
-                "preview_active": False,
-                "updated": 0,
-            }
-        )
+def initial_state() -> dict:
+    """Return a new fail-closed state snapshot for one bridge instance."""
+    return {
+        "service": "Senton Control",
+        "protocol": PROTOCOL_VERSION,
+        "pc_connected": True,
+        "pi_connected": False,
+        "safe_mode": True,
+        "speed_kmh": 0,
+        "battery_v": None,
+        "signal": None,
+        "message": "Windows link ready",
+        "preview_active": False,
+        "updated": 0,
+    }
 
 
 def local_ip() -> str:
@@ -66,17 +48,21 @@ def local_ip() -> str:
         s.close()
 
 
-def snapshot_state() -> dict:
-    with _state_lock:
-        payload = dict(_state)
-    payload["updated"] = int(time.time())
-    return payload
-
-
 class SentonThreadingHTTPServer(ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = True
     request_queue_size = REQUEST_QUEUE_SIZE
+
+    def __init__(self, server_address, RequestHandlerClass):
+        self.state_lock = threading.Lock()
+        self.state = initial_state()
+        super().__init__(server_address, RequestHandlerClass)
+
+    def snapshot_state(self) -> dict:
+        with self.state_lock:
+            payload = dict(self.state)
+        payload["updated"] = int(time.time())
+        return payload
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -134,7 +120,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         if self.path == "/senton/status":
-            self._json(200, snapshot_state())
+            self._json(200, self.server.snapshot_state())
         elif self.path == "/senton/ping":
             self._json(200, {"ok": True, "service": "Senton Control", "protocol": PROTOCOL_VERSION, "safe_mode": True})
         else:
@@ -155,14 +141,14 @@ class Handler(BaseHTTPRequestHandler):
 
         message = str(body.get("message", ""))[:200]
         now = int(time.time())
-        with _state_lock:
+        with self.server.state_lock:
             if self.path == "/senton/preview":
-                _state["message"] = message or "Senton Link preview"
-                _state["preview_active"] = True
+                self.server.state["message"] = message or "Senton Link preview"
+                self.server.state["preview_active"] = True
             else:
-                _state["message"] = message or "Phone test received"
-            _state["updated"] = now
-            echo = _state["message"]
+                self.server.state["message"] = message or "Phone test received"
+            self.server.state["updated"] = now
+            echo = self.server.state["message"]
 
         self._json(200, {"ok": True, "echo": echo, "preview_active": self.path == "/senton/preview", "protocol": PROTOCOL_VERSION, "safe_mode": True})
 
@@ -171,7 +157,6 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def start_phone_link(host: str = "0.0.0.0", port: int = PORT):
-    reset_transient_state()
     server = SentonThreadingHTTPServer((host, port), Handler)
     thread = threading.Thread(target=server.serve_forever, name="senton-phone-link", daemon=True)
     thread.start()
