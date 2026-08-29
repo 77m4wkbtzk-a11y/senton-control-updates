@@ -1,10 +1,10 @@
 {
-  "version": "2.1",
-  "versionCode": 2100,
+  "version": "2.2.0-beta",
+  "versionCode": 2200,
   "download_url": "https://raw.githubusercontent.com/77m4wkbtzk-a11y/senton-control-updates/main/phone-releases/Senton-Link.apk",
-  "sha256": "fa17a06ec8a4b48e364fd5032a107416d53b6e87d9461a8a975472fd51705b90",
-  "channel": "priority-override",
-  "priority": "critical",
-  "mandatory": true,
-  "notes": "Priority override update: Senton Link 2.1 updater test."
+  "sha256": "fb3ede09c18da3110d4dbf08e0f15ad9f68123ccb131e45944fc64d2b3d2e332",
+  "channel": "beta",
+  "priority": "normal",
+  "mandatory": false,
+  "notes": "Senton Link 2.2.0-beta: new dashboard, telemetry placeholders, solar-charge controls and verified Wi-Fi updater under com.senton.link."
 }
