@@ -68,7 +68,6 @@ for required in [
 
 # Repeated updater checks/downloads must not collide and every APK must be SHA-256 verified.
 assert 'updateCheckInFlight.compareAndSet(false, true)' in java
-# The user-visible updater must keep a clear in-progress message through each stage.
 for required_status in [
     'Update in progress — download already queued',
     'Update in progress — downloading Senton Link ',
@@ -82,19 +81,34 @@ assert '!apkUrl.startsWith("https://")' in java
 assert 'expectedSha.equalsIgnoreCase(sha256(uri))' in java
 assert 'MAX_RESPONSE_CHARS' in java
 
+# Force-stop/relaunch must not lose an in-flight updater download or its checksum.
+for required_persistence in [
+    'KEY_DOWNLOAD_ID',
+    'KEY_EXPECTED_SHA',
+    'prefs.getLong(KEY_DOWNLOAD_ID, -1)',
+    'prefs.getString(KEY_EXPECTED_SHA, "")',
+    'resumePendingUpdateIfAny()',
+    'savePendingDownloadState(id, sha)',
+    '.putLong(KEY_DOWNLOAD_ID, id)',
+    '.putString(KEY_EXPECTED_SHA, sha)',
+    '.remove(KEY_DOWNLOAD_ID)',
+    '.remove(KEY_EXPECTED_SHA)',
+    'clearPendingDownloadState()',
+]:
+    assert required_persistence in java, required_persistence
+
 # A new manifest check while an APK is already downloading must not overwrite
 # the checksum that belongs to the in-flight APK. Bind the checksum only when
-# the download itself is queued.
+# the download itself is queued and persist it with that DownloadManager id.
 assert 'startUpdateDownload(apkUrl, remoteVersion, sha)' in java
 assert 'private void startUpdateDownload(String apkUrl, String version, String sha)' in java
 check_start = java.index('private void checkForUpdateAutomatically()')
 download_start = java.index('private void startUpdateDownload(')
-handle_start = java.index('private void handleDownloadedUpdate()')
+resume_start = java.index('private boolean resumePendingUpdateIfAny()')
 check_block = java[check_start:download_start]
-download_block = java[download_start:handle_start]
+download_block = java[download_start:resume_start]
 assert 'expectedSha = sha;' not in check_block
-assert 'expectedSha = sha;' in download_block
-assert 'expectedSha = "";' in java
+assert 'savePendingDownloadState(id, sha);' in download_block
 
 version_name = re.search(r"versionName\s+'([^']+)'", gradle).group(1)
 version_code = int(re.search(r"versionCode\s+(\d+)", gradle).group(1))
