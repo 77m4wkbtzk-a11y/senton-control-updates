@@ -3,6 +3,7 @@ import http.client
 import json
 import socket
 import sys
+import time
 from pathlib import Path
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
@@ -10,7 +11,12 @@ from urllib.request import Request, urlopen
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "source"))
 
-from phone_link_server import MAX_BODY_BYTES, PROTOCOL_VERSION, start_phone_link
+from phone_link_server import (
+    MAX_BODY_BYTES,
+    PROTOCOL_VERSION,
+    REQUEST_BODY_TIMEOUT_SECONDS,
+    start_phone_link,
+)
 
 
 def get_json(url: str):
@@ -36,6 +42,10 @@ def expect_http_error(req: Request, expected: int):
     raise AssertionError(f"Expected HTTP {expected}")
 
 
+def first_status_line(raw: socket.socket) -> bytes:
+    return raw.recv(512).split(b"\r\n", 1)[0]
+
+
 def main():
     server, base = start_phone_link("127.0.0.1", 0)
     port = server.server_address[1]
@@ -55,11 +65,16 @@ def main():
             "safe_mode": True,
         }
 
-        blocked = expect_http_error(
-            Request(base + "/senton/drive", data=b"{}", method="POST"), 403
-        )
-        assert blocked["error"] == "command_locked"
-        assert blocked["safe_mode"] is True
+        # Every actuation-like route must fail closed while no authenticated Pi/car hardware exists.
+        for route in [
+            "/senton/drive",
+            "/senton/start-charge",
+            "/senton/stop-charge",
+            "/senton/throttle",
+        ]:
+            blocked = expect_http_error(Request(base + route, data=b"{}", method="POST"), 403)
+            assert blocked["error"] == "command_locked"
+            assert blocked["safe_mode"] is True
 
         malformed = expect_http_error(
             Request(
@@ -91,9 +106,39 @@ def main():
             b"Content-Length: banana\r\n"
             b"Connection: close\r\n\r\n"
         )
-        first_line = raw.recv(256).split(b"\r\n", 1)[0]
+        assert b" 400 " in first_status_line(raw)
         raw.close()
-        assert b" 400 " in first_line, first_line
+
+        # Truncated requests must be rejected rather than partially parsed.
+        truncated = socket.create_connection(("127.0.0.1", port), timeout=3)
+        truncated.sendall(
+            b"POST /senton/test-message HTTP/1.1\r\n"
+            b"Host: 127.0.0.1\r\n"
+            b"Content-Type: application/json\r\n"
+            b"Content-Length: 64\r\n"
+            b"Connection: close\r\n\r\n"
+            b'{"message":"short"}'
+        )
+        truncated.shutdown(socket.SHUT_WR)
+        assert b" 400 " in first_status_line(truncated)
+        truncated.close()
+
+        # A half-open client must not pin a server worker forever.
+        stalled = socket.create_connection(("127.0.0.1", port), timeout=REQUEST_BODY_TIMEOUT_SECONDS + 3)
+        stalled.sendall(
+            b"POST /senton/test-message HTTP/1.1\r\n"
+            b"Host: 127.0.0.1\r\n"
+            b"Content-Type: application/json\r\n"
+            b"Content-Length: 64\r\n"
+            b"Connection: close\r\n\r\n"
+            b"{"
+        )
+        started = time.monotonic()
+        stalled_line = first_status_line(stalled)
+        elapsed = time.monotonic() - started
+        stalled.close()
+        assert b" 408 " in stalled_line, stalled_line
+        assert elapsed <= REQUEST_BODY_TIMEOUT_SECONDS + 2.0, elapsed
 
         def send(i: int):
             result = post_json(base + "/senton/test-message", {"message": f"test-{i}"})
@@ -102,25 +147,30 @@ def main():
             assert result["protocol"] == PROTOCOL_VERSION
             return result["echo"]
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as pool:
-            echoes = list(pool.map(send, range(30)))
-        assert len(echoes) == 30
+        with concurrent.futures.ThreadPoolExecutor(max_workers=20) as pool:
+            echoes = list(pool.map(send, range(100)))
+        assert len(echoes) == 100
         assert all(e.startswith("test-") for e in echoes)
 
         status = get_json(base + "/senton/status")
         assert status["safe_mode"] is True
         assert status["pi_connected"] is False
+        assert status["speed_kmh"] == 0
     finally:
         server.shutdown()
         server.server_close()
 
-    # Cold restart/reconnect on the same port must work immediately.
-    server2, base2 = start_phone_link("127.0.0.1", port)
-    try:
-        assert get_json(base2 + "/senton/ping")["safe_mode"] is True
-    finally:
-        server2.shutdown()
-        server2.server_close()
+    # Repeated cold restart/reconnect on the same port must work immediately and stay safe.
+    for _ in range(10):
+        restarted, restarted_base = start_phone_link("127.0.0.1", port)
+        try:
+            status = get_json(restarted_base + "/senton/status")
+            assert status["safe_mode"] is True
+            assert status["pi_connected"] is False
+            assert status["speed_kmh"] == 0
+        finally:
+            restarted.shutdown()
+            restarted.server_close()
 
     print("Senton phone-link hard integration test passed")
 
