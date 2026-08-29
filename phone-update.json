@@ -2,7 +2,7 @@
   "version": "2.3.1-beta",
   "versionCode": 2301,
   "download_url": "https://raw.githubusercontent.com/77m4wkbtzk-a11y/senton-control-updates/main/phone-releases/Senton-Link.apk",
-  "sha256": "0cae627effd7d8160bc9e3191d5b9de8797ec3d200fd481bc230285c3e251bf9",
+  "sha256": "6736c2605dff147aa2e418e932e6a8afe98a7690ba7836308aa116ec0e857294",
   "channel": "beta",
   "priority": "normal",
   "mandatory": false,
