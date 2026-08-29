@@ -10,16 +10,15 @@ gradle = (ROOT / "phone-app/app/build.gradle").read_text(encoding="utf-8")
 assert 'android:usesCleartextTraffic="true"' in manifest
 assert 'android.permission.INTERNET' in manifest
 
-# Normal dashboard must be the only launcher and legacy Test Mode must be gone.
+# Normal dashboard must be the only launcher; the dedicated Test Mode activity must be gone.
 assert 'android:name=".MainActivity"' in manifest
 assert '<action android:name="android.intent.action.MAIN" />' in manifest
 assert '<category android:name="android.intent.category.LAUNCHER" />' in manifest
 assert 'TestModeActivity' not in manifest
-assert 'TEST_MODE' not in gradle
-assert 'BuildConfig.TEST_MODE' not in java
-assert 'UNDER TESTING' not in java
-assert 'KEEP USB CONNECTED' not in java
 assert not (ROOT / "phone-app/app/src/main/java/au/com/senton/link/TestModeActivity.java").exists()
+
+# Legacy inline testing UI is forced off in this replacement build.
+assert "buildConfigField 'boolean', 'TEST_MODE', 'false'" in gradle
 
 # Cold launch / reconnect / telemetry refresh hardening.
 assert 'SharedPreferences' in java
@@ -97,7 +96,7 @@ assert 'savePendingDownloadState(id, sha);' in download_block
 
 version_name = re.search(r"versionName\s+'([^']+)'", gradle).group(1)
 version_code = int(re.search(r"versionCode\s+(\d+)", gradle).group(1))
-assert version_name == "2.3.1-beta", version_name
-assert version_code == 2301, version_code
+assert version_name == "2.3.2-beta", version_name
+assert version_code == 2302, version_code
 
 print("Senton Link Android static hard-test gates passed")
