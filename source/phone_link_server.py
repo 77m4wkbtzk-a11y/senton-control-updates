@@ -15,6 +15,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 PORT = 8765
 PROTOCOL_VERSION = 1
 MAX_BODY_BYTES = 2048
+REQUEST_BODY_TIMEOUT_SECONDS = 3.0
 
 _state_lock = threading.Lock()
 _state = {
@@ -57,6 +58,7 @@ class SentonThreadingHTTPServer(ThreadingHTTPServer):
 
 class Handler(BaseHTTPRequestHandler):
     server_version = "SentonLink/1.1"
+    timeout = REQUEST_BODY_TIMEOUT_SECONDS
 
     def _json(self, code: int, payload: dict) -> None:
         data = json.dumps(payload, separators=(",", ":")).encode("utf-8")
@@ -103,7 +105,16 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         try:
-            body = json.loads(self.rfile.read(length) or b"{}")
+            raw_body = self.rfile.read(length)
+        except (socket.timeout, TimeoutError, OSError):
+            self._json(408, {"error": "request_timeout", "safe_mode": True})
+            return
+        if len(raw_body) != length:
+            self._json(400, {"error": "truncated_body", "safe_mode": True})
+            return
+
+        try:
+            body = json.loads(raw_body or b"{}")
             if not isinstance(body, dict):
                 raise ValueError("JSON body must be an object")
         except Exception:
