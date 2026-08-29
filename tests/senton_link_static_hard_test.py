@@ -21,7 +21,9 @@ assert 'android:exported="false"' in manifest
 assert 'TestModeActivity' not in manifest
 assert not (ROOT / "phone-app/app/src/main/java/au/com/senton/link/TestModeActivity.java").exists()
 
-# Temporary hard-test mode is allowed only inside MainActivity and must never become a launcher or persisted app mode.
+# Hard-test mode is allowed only inside MainActivity. It must remain selected across
+# foreground/background transitions, request keep-screen-on only while foregrounded,
+# and must not auto-dismiss on a timer or lifecycle transition.
 for required_test_mode in [
     'EXTRA_TEST_MODE = "senton_test_mode"',
     'getBooleanExtra(EXTRA_TEST_MODE, false)',
@@ -29,13 +31,6 @@ for required_test_mode in [
     'TEMPORARY HARD-TEST SESSION',
     'VEHICLE CONTROLS LOCKED',
     'FLAG_KEEP_SCREEN_ON',
-    'TEST_MODE_MAX_MS',
-    '15 * 60 * 1000L',
-    'exitTemporaryTestMode()',
-    'getIntent().removeExtra(EXTRA_TEST_MODE)',
-    'testBanner.setVisibility(View.GONE)',
-    'getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)',
-    'if (testMode) exitTemporaryTestMode();',
 ]:
     assert required_test_mode in main_java, required_test_mode
 assert 'TestModeActivity' not in main_java
@@ -45,6 +40,25 @@ assert "putString(EXTRA_TEST_MODE" not in main_java
 assert 'senton_test_mode' not in update_java
 assert 'UNDER TESTING' not in update_java
 assert 'senton_test_mode' not in manifest
+
+resume_start = main_java.index('@Override protected void onResume()')
+pause_start = main_java.index('@Override protected void onPause()')
+system_start = main_java.index('private String systemText()', pause_start)
+resume_block = main_java[resume_start:pause_start]
+pause_block = main_java[pause_start:system_start]
+assert 'if (testMode)' in resume_block
+assert 'getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)' in resume_block
+assert 'if (testMode)' in pause_block
+assert 'getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)' in pause_block
+for forbidden_auto_exit in [
+    'TEST_MODE_MAX_MS',
+    'postDelayed(',
+    'exitTemporaryTestMode',
+    'removeExtra(EXTRA_TEST_MODE)',
+    'testMode = false',
+]:
+    assert forbidden_auto_exit not in main_java, forbidden_auto_exit
+assert 'testBanner.setVisibility(View.GONE)' not in pause_block
 
 # Windows Link was intentionally removed from 2.3.3. No old PC-control surface may remain.
 for removed in [
