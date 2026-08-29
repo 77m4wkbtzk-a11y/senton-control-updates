@@ -18,36 +18,68 @@ concurrency:
 jobs:
   build-android:
     runs-on: ubuntu-latest
+    env:
+      SENTON_KEYSTORE_PASSWORD: ${{ secrets.SENTON_KEYSTORE_PASSWORD }}
+      SENTON_KEY_ALIAS: ${{ secrets.SENTON_KEY_ALIAS }}
+      SENTON_KEY_PASSWORD: ${{ secrets.SENTON_KEY_PASSWORD }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
       - name: Hard-test Android fail-safe source gates
         run: python3 tests/senton_link_static_hard_test.py
+
       - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
+
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+
       - name: Install Android platform
         run: |
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
       - name: Download Gradle
         run: |
           curl -L --fail --retry 3 -o /tmp/gradle.zip https://services.gradle.org/distributions/gradle-8.7-bin.zip
           unzip -q /tmp/gradle.zip -d /tmp
-      - name: Build debug APK
+
+      - name: Require permanent release signing secrets
+        env:
+          SENTON_KEYSTORE_B64: ${{ secrets.SENTON_KEYSTORE_B64 }}
+        run: |
+          test -n "$SENTON_KEYSTORE_B64" || { echo "Missing SENTON_KEYSTORE_B64"; exit 1; }
+          test -n "$SENTON_KEYSTORE_PASSWORD" || { echo "Missing SENTON_KEYSTORE_PASSWORD"; exit 1; }
+          test -n "$SENTON_KEY_ALIAS" || { echo "Missing SENTON_KEY_ALIAS"; exit 1; }
+          test -n "$SENTON_KEY_PASSWORD" || { echo "Missing SENTON_KEY_PASSWORD"; exit 1; }
+          printf '%s' "$SENTON_KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/senton-link-release.jks"
+          test -s "$RUNNER_TEMP/senton-link-release.jks"
+          chmod 600 "$RUNNER_TEMP/senton-link-release.jks"
+          echo "SENTON_KEYSTORE_FILE=$RUNNER_TEMP/senton-link-release.jks" >> "$GITHUB_ENV"
+
+      - name: Build signed release APK
         working-directory: phone-app
-        run: /tmp/gradle-8.7/bin/gradle --no-daemon assembleDebug
-      - name: Upload installable APK artifact
+        run: /tmp/gradle-8.7/bin/gradle --no-daemon clean assembleRelease
+
+      - name: Verify APK signature and certificate
+        run: |
+          APK="phone-app/app/build/outputs/apk/release/app-release.apk"
+          test -s "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify "$APK"
+
+      - name: Upload signed installable APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Senton-Link-2.3.3-beta-apk
-          path: phone-app/app/build/outputs/apk/debug/app-debug.apk
+          name: Senton-Link-2.3.3-beta-signed-release
+          path: phone-app/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
           retention-days: 14
+
       - name: Publish Senton Link 2.3.3-beta
         run: |
           git fetch origin main
@@ -57,7 +89,7 @@ jobs:
             exit 0
           fi
           mkdir -p phone-releases
-          cp phone-app/app/build/outputs/apk/debug/app-debug.apk phone-releases/Senton-Link.apk
+          cp phone-app/app/build/outputs/apk/release/app-release.apk phone-releases/Senton-Link.apk
           sha=$(sha256sum phone-releases/Senton-Link.apk | awk '{print $1}')
           cat > phone-update.json <<EOF
           {
@@ -68,11 +100,11 @@ jobs:
             "channel": "beta",
             "priority": "high",
             "mandatory": false,
-            "notes": "Senton Link 2.3.3-beta adds a closable in-app update progress page with live DownloadManager progress, persistent update state, SHA-256 verification, and return-to-dashboard control."
+            "notes": "Senton Link 2.3.3-beta signed release: closable update progress page, Windows Link removed, temporary test mode only during explicit tests, and SHA-256 verified updater."
           }
           EOF
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add phone-releases/Senton-Link.apk phone-update.json
-          git diff --cached --quiet || git commit -m "Publish Senton Link 2.3.3-beta"
+          git diff --cached --quiet || git commit -m "Publish signed Senton Link 2.3.3-beta"
           git push origin main
