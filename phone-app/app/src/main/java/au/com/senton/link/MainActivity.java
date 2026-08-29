@@ -1,4 +1,4 @@
-package au.com.senton.link;
+package com.senton.link;
 
 import android.app.Activity;
 import android.app.DownloadManager;
@@ -29,23 +29,19 @@ import java.security.MessageDigest;
 
 public class MainActivity extends Activity {
     private static final String UPDATE_URL = "https://raw.githubusercontent.com/77m4wkbtzk-a11y/senton-control-updates/main/phone-update.json";
-    private TextView status;
     private TextView updateStatus;
     private long downloadId = -1;
-    private String expectedSha = null;
+    private String expectedSha = "";
 
     private final BroadcastReceiver downloadReceiver = new BroadcastReceiver() {
-        @Override
-        public void onReceive(Context context, Intent intent) {
+        @Override public void onReceive(Context context, Intent intent) {
             long id = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1);
             if (id == downloadId) handleDownloadedUpdate();
         }
     };
 
-    @Override
-    protected void onCreate(Bundle savedInstanceState) {
+    @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-
         if (Build.VERSION.SDK_INT >= 33) {
             registerReceiver(downloadReceiver, new IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE), RECEIVER_NOT_EXPORTED);
         } else {
@@ -53,85 +49,81 @@ public class MainActivity extends Activity {
         }
 
         ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(true);
         scroll.setBackgroundColor(Color.rgb(7, 12, 22));
-
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(20), dp(24), dp(20), dp(28));
-        scroll.addView(root, new ScrollView.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT));
+        root.setPadding(dp(18), dp(22), dp(18), dp(28));
+        scroll.addView(root);
 
-        TextView title = text("SENTON LINK", 30, Color.WHITE, true);
-        root.addView(title);
-        TextView subtitle = text("Vehicle control companion", 15, Color.rgb(135, 166, 196), false);
-        root.addView(subtitle, marginTop(4));
+        root.addView(text("SENTON LINK", 30, Color.WHITE, true));
+        root.addView(text("v" + BuildConfig.VERSION_NAME, 13, Color.rgb(38,139,255), true));
+        root.addView(text("● SENTON PI DISCONNECTED — SAFE MODE", 15, Color.rgb(255,190,70), true), mt(16));
+        updateStatus = text("Wi-Fi updates: checking…", 13, Color.rgb(135,166,196), false);
+        root.addView(updateStatus, mt(8));
 
-        status = text("●  DISCONNECTED — safe mode", 16, Color.rgb(255, 190, 70), true);
-        root.addView(status, marginTop(22));
+        root.addView(panel("MY SENTON\nReady for vehicle pairing\n\nVehicle controls remain disabled until Senton Pi pairing is complete."), mt(18));
+        root.addView(panel("DASHBOARD\n\nSpeed          0 km/h\nMotor temp     -- °C\nBattery        -- V\nSignal         -- dBm"), mt(12));
 
-        updateStatus = text("Updates: checking automatically…", 14, Color.rgb(135, 166, 196), false);
-        root.addView(updateStatus, marginTop(10));
+        LinearLayout actions = row();
+        actions.addView(button("DRIVE", false), weight());
+        actions.addView(button("TEST", false), weight());
+        Button update = button("UPDATE", true);
+        update.setOnClickListener(v -> checkForUpdateAutomatically());
+        actions.addView(update, weight());
+        root.addView(actions, mt(12));
 
-        root.addView(section("VEHICLE", "Waiting for Senton car connection\nSpeed: 0 km/h   •   Battery: --   •   Signal: --"), marginTop(16));
-        root.addView(section("SOLAR CHARGE", "Solar input: --\nCharging: OFF\nBattery level: --\nCharge controls remain locked until the Pi/car link is authenticated."), marginTop(14));
+        root.addView(panel("LIVE TELEMETRY\n\nWaiting for authenticated Senton Pi connection."), mt(18));
+        root.addView(panel("SOLAR CHARGE\n\nSolar input     --\nCharging        OFF\nBattery level   --\nCharge timer    --\n\nCharge controls remain locked until the Pi/car link is authenticated."), mt(12));
 
-        Button start = button("START CHARGE");
-        start.setEnabled(false);
-        root.addView(start, marginTop(14));
+        LinearLayout charge = row();
+        charge.addView(button("START CHARGE", false), weight());
+        charge.addView(button("STOP CHARGE", false), weight());
+        root.addView(charge, mt(10));
 
-        Button stop = button("STOP CHARGE");
-        stop.setEnabled(false);
-        root.addView(stop, marginTop(10));
+        LinearLayout timers = row();
+        timers.addView(button("30 MIN", false), weight());
+        timers.addView(button("1 HOUR", false), weight());
+        timers.addView(button("2 HOURS", false), weight());
+        root.addView(timers, mt(8));
 
-        LinearLayout timers = new LinearLayout(this);
-        timers.setOrientation(LinearLayout.HORIZONTAL);
-        timers.setGravity(Gravity.CENTER_HORIZONTAL);
-        String[] labels = {"30 MIN", "1 HOUR", "2 HOURS"};
-        for (String label : labels) {
-            Button b = button(label);
-            b.setEnabled(false);
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, dp(48), 1f);
-            lp.setMargins(dp(4), 0, dp(4), 0);
-            timers.addView(b, lp);
-        }
-        root.addView(timers, marginTop(10));
-
-        root.addView(section("SAFETY", "Senton Link only grants or removes charge permission. The dedicated charger/BMS remains responsible for battery voltage, current, balancing and thermal protection."), marginTop(18));
-
-        TextView footer = text("Senton Link beta " + BuildConfig.VERSION_NAME, 13, Color.rgb(100, 125, 150), false);
+        root.addView(panel("SYSTEM\n\nApp status      OK\nUpdate channel  Beta\nVehicle link    Disconnected\nSafety mode     Active"), mt(18));
+        root.addView(text("Senton Link only grants or removes charge permission. The dedicated charger/BMS remains responsible for battery safety.", 13, Color.rgb(135,166,196), false), mt(18));
+        TextView footer = text("Senton Link " + BuildConfig.VERSION_NAME + " • com.senton.link", 12, Color.rgb(90,115,140), false);
         footer.setGravity(Gravity.CENTER);
-        root.addView(footer, marginTop(24));
+        root.addView(footer, mt(22));
 
         setContentView(scroll);
         checkForUpdateAutomatically();
     }
 
     private void checkForUpdateAutomatically() {
+        updateStatus.setText("Wi-Fi updates: checking…");
         new Thread(() -> {
             HttpURLConnection conn = null;
             try {
-                conn = (HttpURLConnection) new URL(UPDATE_URL).openConnection();
+                conn = (HttpURLConnection) new URL(UPDATE_URL + "?t=" + System.currentTimeMillis()).openConnection();
                 conn.setConnectTimeout(10000);
                 conn.setReadTimeout(10000);
                 conn.setUseCaches(false);
+                conn.setRequestProperty("Cache-Control", "no-cache");
                 try (BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream()))) {
-                    StringBuilder jsonText = new StringBuilder();
+                    StringBuilder body = new StringBuilder();
                     String line;
-                    while ((line = reader.readLine()) != null) jsonText.append(line);
-                    JSONObject json = new JSONObject(jsonText.toString());
+                    while ((line = reader.readLine()) != null) body.append(line);
+                    JSONObject json = new JSONObject(body.toString());
                     String remoteVersion = json.getString("version");
                     String apkUrl = json.getString("download_url");
                     expectedSha = json.optString("sha256", "");
                     if (isNewer(remoteVersion, BuildConfig.VERSION_NAME)) {
-                        runOnUiThread(() -> updateStatus.setText("Update " + remoteVersion + " found — downloading automatically…"));
+                        runOnUiThread(() -> updateStatus.setText("Update " + remoteVersion + " found — downloading…"));
                         startUpdateDownload(apkUrl, remoteVersion);
                     } else {
-                        runOnUiThread(() -> updateStatus.setText("Updates: current (" + BuildConfig.VERSION_NAME + ")"));
+                        runOnUiThread(() -> updateStatus.setText("Wi-Fi updates: current (" + BuildConfig.VERSION_NAME + ")"));
                     }
                 }
             } catch (Exception e) {
-                runOnUiThread(() -> updateStatus.setText("Updates: check failed — will try next launch"));
+                runOnUiThread(() -> updateStatus.setText("Wi-Fi updates: check failed — tap UPDATE to retry"));
             } finally {
                 if (conn != null) conn.disconnect();
             }
@@ -142,7 +134,7 @@ public class MainActivity extends Activity {
         DownloadManager dm = (DownloadManager) getSystemService(DOWNLOAD_SERVICE);
         DownloadManager.Request request = new DownloadManager.Request(Uri.parse(apkUrl));
         request.setTitle("Senton Link " + version);
-        request.setDescription("Downloading automatic update");
+        request.setDescription("Downloading verified update");
         request.setMimeType("application/vnd.android.package-archive");
         request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
         request.setDestinationInExternalFilesDir(this, null, "Senton-Link-update.apk");
@@ -151,30 +143,21 @@ public class MainActivity extends Activity {
 
     private void handleDownloadedUpdate() {
         DownloadManager dm = (DownloadManager) getSystemService(DOWNLOAD_SERVICE);
-        DownloadManager.Query query = new DownloadManager.Query().setFilterById(downloadId);
-        try (Cursor cursor = dm.query(query)) {
+        try (Cursor cursor = dm.query(new DownloadManager.Query().setFilterById(downloadId))) {
             if (cursor == null || !cursor.moveToFirst()) return;
-            int statusIndex = cursor.getColumnIndex(DownloadManager.COLUMN_STATUS);
-            if (statusIndex < 0 || cursor.getInt(statusIndex) != DownloadManager.STATUS_SUCCESSFUL) {
-                updateStatus.setText("Update download failed — will retry next launch");
+            int idx = cursor.getColumnIndex(DownloadManager.COLUMN_STATUS);
+            if (idx < 0 || cursor.getInt(idx) != DownloadManager.STATUS_SUCCESSFUL) {
+                updateStatus.setText("Update download failed — tap UPDATE to retry");
                 return;
             }
         }
-
         Uri uri = dm.getUriForDownloadedFile(downloadId);
-        if (uri == null) {
-            updateStatus.setText("Update downloaded but could not open installer");
-            return;
-        }
-
+        if (uri == null) { updateStatus.setText("Update downloaded but installer could not open"); return; }
         new Thread(() -> {
             try {
-                if (expectedSha != null && !expectedSha.isEmpty()) {
-                    String actual = sha256(uri);
-                    if (!expectedSha.equalsIgnoreCase(actual)) {
-                        runOnUiThread(() -> updateStatus.setText("Update blocked: file verification failed"));
-                        return;
-                    }
+                if (!expectedSha.isEmpty() && !expectedSha.equalsIgnoreCase(sha256(uri))) {
+                    runOnUiThread(() -> updateStatus.setText("Update blocked: SHA-256 verification failed"));
+                    return;
                 }
                 runOnUiThread(() -> launchInstaller(uri));
             } catch (Exception e) {
@@ -184,7 +167,7 @@ public class MainActivity extends Activity {
     }
 
     private void launchInstaller(Uri uri) {
-        updateStatus.setText("Update ready — Android installer opening…");
+        updateStatus.setText("Update verified — opening Android installer…");
         Intent install = new Intent(Intent.ACTION_VIEW);
         install.setDataAndType(uri, "application/vnd.android.package-archive");
         install.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
@@ -194,9 +177,10 @@ public class MainActivity extends Activity {
     private String sha256(Uri uri) throws Exception {
         MessageDigest digest = MessageDigest.getInstance("SHA-256");
         try (InputStream in = getContentResolver().openInputStream(uri)) {
-            byte[] buffer = new byte[8192];
-            int read;
-            while ((read = in.read(buffer)) > 0) digest.update(buffer, 0, read);
+            if (in == null) throw new IllegalStateException("APK unavailable");
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = in.read(buf)) > 0) digest.update(buf, 0, n);
         }
         StringBuilder out = new StringBuilder();
         for (byte b : digest.digest()) out.append(String.format("%02x", b));
@@ -207,59 +191,44 @@ public class MainActivity extends Activity {
         String[] r = remote.split("\\.");
         String[] l = local.split("\\.");
         int count = Math.max(r.length, l.length);
-        for (int i = 0; i < count; i++) {
-            int rv = i < r.length ? parseInt(r[i]) : 0;
-            int lv = i < l.length ? parseInt(l[i]) : 0;
+        for (int i=0; i<count; i++) {
+            int rv = i<r.length ? num(r[i]) : 0;
+            int lv = i<l.length ? num(l[i]) : 0;
             if (rv != lv) return rv > lv;
         }
         return false;
     }
 
-    private int parseInt(String value) {
-        try { return Integer.parseInt(value.replaceAll("[^0-9].*$", "")); }
+    private int num(String s) {
+        try { String c = s.replaceAll("[^0-9].*$", ""); return c.isEmpty()?0:Integer.parseInt(c); }
         catch (Exception e) { return 0; }
     }
 
-    @Override
-    protected void onDestroy() {
+    @Override protected void onDestroy() {
         try { unregisterReceiver(downloadReceiver); } catch (Exception ignored) {}
         super.onDestroy();
     }
 
-    private TextView section(String heading, String body) {
-        TextView box = text(heading + "\n\n" + body, 15, Color.rgb(220, 232, 244), false);
-        box.setPadding(dp(16), dp(16), dp(16), dp(16));
-        box.setBackgroundColor(Color.rgb(18, 29, 43));
-        return box;
-    }
-
-    private Button button(String label) {
-        Button b = new Button(this);
-        b.setText(label);
-        b.setTextSize(15);
-        b.setAllCaps(false);
-        b.setMinHeight(dp(50));
-        return b;
-    }
-
-    private TextView text(String value, int size, int color, boolean bold) {
-        TextView t = new TextView(this);
-        t.setText(value);
-        t.setTextSize(size);
-        t.setTextColor(color);
-        if (bold) t.setTypeface(t.getTypeface(), android.graphics.Typeface.BOLD);
+    private TextView panel(String s) {
+        TextView t = text(s, 14, Color.rgb(220,232,244), false);
+        t.setPadding(dp(16), dp(16), dp(16), dp(16));
+        t.setBackgroundColor(Color.rgb(18,29,43));
         return t;
     }
 
-    private LinearLayout.LayoutParams marginTop(int top) {
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.topMargin = dp(top);
-        return lp;
+    private Button button(String label, boolean enabled) {
+        Button b = new Button(this);
+        b.setText(label);
+        b.setTextSize(12);
+        b.setAllCaps(false);
+        b.setEnabled(enabled);
+        b.setMinHeight(dp(48));
+        return b;
     }
 
-    private int dp(int value) {
-        return (int) (value * getResources().getDisplayMetrics().density + 0.5f);
-    }
+    private LinearLayout row() { LinearLayout r = new LinearLayout(this); r.setOrientation(LinearLayout.HORIZONTAL); return r; }
+    private LinearLayout.LayoutParams weight() { LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f); lp.setMargins(dp(4),0,dp(4),0); return lp; }
+    private TextView text(String s,int size,int color,boolean bold) { TextView t=new TextView(this); t.setText(s); t.setTextSize(size); t.setTextColor(color); if (bold) t.setTypeface(t.getTypeface(), android.graphics.Typeface.BOLD); return t; }
+    private LinearLayout.LayoutParams mt(int top) { LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,ViewGroup.LayoutParams.WRAP_CONTENT); lp.topMargin=dp(top); return lp; }
+    private int dp(int v) { return (int)(v*getResources().getDisplayMetrics().density+0.5f); }
 }
