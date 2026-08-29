@@ -1,0 +1,7 @@
+{
+  "version": "0.1.0",
+  "download_url": "https://raw.githubusercontent.com/77m4wkbtzk-a11y/senton-control-updates/main/phone-releases/Senton-Link.apk",
+  "sha256": "6343d0912e709bb2abc922c7c5d7a2ba39489ab062bbabd25e44345c90cefdf6",
+  "channel": "beta",
+  "notes": "First Senton Link Android beta: dashboard and solar-charge UI in safe disconnected mode."
+}
