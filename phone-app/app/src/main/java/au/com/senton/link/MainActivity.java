@@ -41,6 +41,8 @@ public class MainActivity extends Activity {
     private static final String UPDATE_URL = "https://raw.githubusercontent.com/77m4wkbtzk-a11y/senton-control-updates/main/phone-update.json";
     private static final String PREFS = "senton_link";
     private static final String KEY_PC_ADDRESS = "pc_address";
+    private static final String KEY_DOWNLOAD_ID = "update_download_id";
+    private static final String KEY_EXPECTED_SHA = "update_expected_sha";
     private static final String DEFAULT_PC_URL = "http://127.0.0.1:8765";
     private static final int SENTON_PROTOCOL = 1;
     private static final int MAX_RESPONSE_CHARS = 65536;
@@ -80,6 +82,13 @@ public class MainActivity extends Activity {
         if (Build.VERSION.SDK_INT >= 33) registerReceiver(downloadReceiver, new IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE), RECEIVER_NOT_EXPORTED);
         else registerReceiver(downloadReceiver, new IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE));
 
+        SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+        downloadId = prefs.getLong(KEY_DOWNLOAD_ID, -1);
+        expectedSha = prefs.getString(KEY_EXPECTED_SHA, "");
+        if (downloadId == -1 || expectedSha == null || !expectedSha.matches("[0-9a-f]{64}")) {
+            clearPendingDownloadState();
+        }
+
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
         scroll.setBackgroundColor(Color.rgb(7, 12, 22));
@@ -104,7 +113,6 @@ public class MainActivity extends Activity {
 
         root.addView(panel("WINDOWS LINK\nConnect Senton Link to Senton Control on this PC."), mt(16));
         pcAddress = new EditText(this);
-        SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
         pcAddress.setText(prefs.getString(KEY_PC_ADDRESS, DEFAULT_PC_URL));
         pcAddress.setTextColor(Color.WHITE);
         pcAddress.setHintTextColor(Color.GRAY);
@@ -148,7 +156,9 @@ public class MainActivity extends Activity {
         root.addView(footer, mt(22));
 
         setContentView(scroll);
-        checkForUpdateAutomatically();
+        if (!resumePendingUpdateIfAny()) {
+            checkForUpdateAutomatically();
+        }
     }
 
     @Override protected void onResume() {
@@ -330,10 +340,55 @@ public class MainActivity extends Activity {
         request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
         String safeVersion = version.replaceAll("[^A-Za-z0-9._-]", "_");
         request.setDestinationInExternalFilesDir(this, null, "Senton-Link-" + safeVersion + "-" + System.currentTimeMillis() + ".apk");
-        // Bind the checksum to the download being queued. A later update check
-        // must never replace the checksum for an APK already in flight.
+        long id = dm.enqueue(request);
+        savePendingDownloadState(id, sha);
+    }
+
+    private boolean resumePendingUpdateIfAny() {
+        if (downloadId == -1 || expectedSha == null || !expectedSha.matches("[0-9a-f]{64}")) return false;
+        DownloadManager dm = (DownloadManager) getSystemService(DOWNLOAD_SERVICE);
+        try (Cursor cursor = dm.query(new DownloadManager.Query().setFilterById(downloadId))) {
+            if (cursor == null || !cursor.moveToFirst()) {
+                clearPendingDownloadState();
+                return false;
+            }
+            int idx = cursor.getColumnIndex(DownloadManager.COLUMN_STATUS);
+            if (idx < 0) {
+                clearPendingDownloadState();
+                return false;
+            }
+            int status = cursor.getInt(idx);
+            if (status == DownloadManager.STATUS_SUCCESSFUL) {
+                updateStatus.setText("Update in progress — verifying downloaded update…");
+                handleDownloadedUpdate();
+                return true;
+            }
+            if (status == DownloadManager.STATUS_PENDING || status == DownloadManager.STATUS_RUNNING || status == DownloadManager.STATUS_PAUSED) {
+                updateStatus.setText("Update in progress — download already queued");
+                return true;
+            }
+        }
+        updateStatus.setText("Update download failed — tap UPDATE to retry");
+        clearPendingDownloadState();
+        return false;
+    }
+
+    private void savePendingDownloadState(long id, String sha) {
+        downloadId = id;
         expectedSha = sha;
-        downloadId = dm.enqueue(request);
+        getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                .putLong(KEY_DOWNLOAD_ID, id)
+                .putString(KEY_EXPECTED_SHA, sha)
+                .apply();
+    }
+
+    private void clearPendingDownloadState() {
+        downloadId = -1;
+        expectedSha = "";
+        getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                .remove(KEY_DOWNLOAD_ID)
+                .remove(KEY_EXPECTED_SHA)
+                .apply();
     }
 
     private void handleDownloadedUpdate() {
@@ -341,35 +396,32 @@ public class MainActivity extends Activity {
         try (Cursor cursor = dm.query(new DownloadManager.Query().setFilterById(downloadId))) {
             if (cursor == null || !cursor.moveToFirst()) {
                 updateStatus.setText("Update download could not be verified");
-                downloadId = -1;
-                expectedSha = "";
+                clearPendingDownloadState();
                 return;
             }
             int idx = cursor.getColumnIndex(DownloadManager.COLUMN_STATUS);
             if (idx < 0 || cursor.getInt(idx) != DownloadManager.STATUS_SUCCESSFUL) {
                 updateStatus.setText("Update download failed — tap UPDATE to retry");
-                downloadId = -1;
-                expectedSha = "";
+                clearPendingDownloadState();
                 return;
             }
         }
         Uri uri = dm.getUriForDownloadedFile(downloadId);
         if (uri == null) {
             updateStatus.setText("Update downloaded but installer could not open");
-            downloadId = -1;
-            expectedSha = "";
+            clearPendingDownloadState();
             return;
         }
         updateStatus.setText("Update in progress — verifying downloaded update…");
         new Thread(() -> {
             try {
                 if (!expectedSha.matches("[0-9a-f]{64}") || !expectedSha.equalsIgnoreCase(sha256(uri))) {
-                    runOnUiThread(() -> { updateStatus.setText("Update blocked: SHA-256 verification failed"); downloadId = -1; expectedSha = ""; });
+                    runOnUiThread(() -> { updateStatus.setText("Update blocked: SHA-256 verification failed"); clearPendingDownloadState(); });
                     return;
                 }
                 runOnUiThread(() -> launchInstaller(uri));
             } catch (Exception e) {
-                runOnUiThread(() -> { updateStatus.setText("Update verification failed"); downloadId = -1; expectedSha = ""; });
+                runOnUiThread(() -> { updateStatus.setText("Update verification failed"); clearPendingDownloadState(); });
             }
         }, "senton-update-verify").start();
     }
@@ -379,8 +431,7 @@ public class MainActivity extends Activity {
         Intent install = new Intent(Intent.ACTION_VIEW);
         install.setDataAndType(uri, "application/vnd.android.package-archive");
         install.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
-        downloadId = -1;
-        expectedSha = "";
+        clearPendingDownloadState();
         startActivity(install);
     }
 
