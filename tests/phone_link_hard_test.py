@@ -235,6 +235,48 @@ def main():
             restarted.shutdown()
             restarted.server_close()
 
+    # Rapid overlapping relaunches on different sockets must not share or reset
+    # transient Test Mode state between bridge instances. Each instance must remain
+    # independently fail-closed with actuation locked.
+    first, first_base = start_phone_link("127.0.0.1", 0)
+    second = None
+    try:
+        preview = post_json(first_base + "/senton/preview", {"message": "INSTANCE A TEST MODE"})
+        assert preview["preview_active"] is True
+        first_before = get_json(first_base + "/senton/status")
+        assert first_before["message"] == "INSTANCE A TEST MODE"
+        assert first_before["preview_active"] is True
+        assert_safe(first_before)
+
+        second, second_base = start_phone_link("127.0.0.1", 0)
+        first_after = get_json(first_base + "/senton/status")
+        second_status = get_json(second_base + "/senton/status")
+        assert first_after["message"] == "INSTANCE A TEST MODE"
+        assert first_after["preview_active"] is True
+        assert second_status["message"] == "Windows link ready"
+        assert second_status["preview_active"] is False
+        assert_safe(first_after)
+        assert_safe(second_status)
+
+        for bridge_base in (first_base, second_base):
+            for route in ("/senton/drive", "/senton/solar-charge"):
+                blocked = expect_http_error(
+                    Request(
+                        bridge_base + route,
+                        data=b'{"authenticated":true,"pi_connected":true,"safe_mode":false}',
+                        method="POST",
+                    ),
+                    403,
+                )
+                assert blocked["error"] == "command_locked"
+                assert blocked["safe_mode"] is True
+    finally:
+        if second is not None:
+            second.shutdown()
+            second.server_close()
+        first.shutdown()
+        first.server_close()
+
     print("Senton phone-link EXTREME hard integration test passed")
 
 
