@@ -59,6 +59,7 @@ def main():
         assert status["safe_mode"] is True
         assert status["pi_connected"] is False
         assert status["speed_kmh"] == 0
+        assert status["preview_active"] is False
 
         ping = get_json(base + "/senton/ping")
         assert ping == {
@@ -68,7 +69,17 @@ def main():
             "safe_mode": True,
         }
 
-        # Every actuation-like route must fail closed while no authenticated Pi/car hardware exists.
+        preview = post_json(base + "/senton/preview", {"message": "TEST MODE PREVIEW — SAFE MODE ACTIVE"})
+        assert preview["ok"] is True
+        assert preview["safe_mode"] is True
+        assert preview["preview_active"] is True
+        status = get_json(base + "/senton/status")
+        assert status["message"] == "TEST MODE PREVIEW — SAFE MODE ACTIVE"
+        assert status["preview_active"] is True
+        assert status["safe_mode"] is True
+        assert status["pi_connected"] is False
+        assert status["speed_kmh"] == 0
+
         for route in [
             "/senton/drive",
             "/senton/start-charge",
@@ -92,12 +103,7 @@ def main():
         assert malformed["error"] == "bad_json"
 
         conn = http.client.HTTPConnection("127.0.0.1", port, timeout=3)
-        conn.request(
-            "POST",
-            "/senton/test-message",
-            body=b"{}",
-            headers={"Content-Length": str(MAX_BODY_BYTES + 1)},
-        )
+        conn.request("POST", "/senton/test-message", body=b"{}", headers={"Content-Length": str(MAX_BODY_BYTES + 1)})
         response = conn.getresponse()
         assert response.status == 413
         response.read()
@@ -113,7 +119,6 @@ def main():
         assert b" 400 " in first_status_line(raw)
         raw.close()
 
-        # Truncated requests must be rejected rather than partially parsed.
         truncated = socket.create_connection(("127.0.0.1", port), timeout=3)
         truncated.sendall(
             b"POST /senton/test-message HTTP/1.1\r\n"
@@ -127,7 +132,6 @@ def main():
         assert b" 400 " in first_status_line(truncated)
         truncated.close()
 
-        # A half-open client must not pin a server worker forever.
         stalled = socket.create_connection(("127.0.0.1", port), timeout=REQUEST_BODY_TIMEOUT_SECONDS + 3)
         stalled.sendall(
             b"POST /senton/test-message HTTP/1.1\r\n"
@@ -156,14 +160,11 @@ def main():
         assert len(echoes) == 100
         assert all(e.startswith("test-") for e in echoes)
 
-        # Reconnect/telemetry storms must not overflow the TCP listen queue and reset valid clients.
         with concurrent.futures.ThreadPoolExecutor(max_workers=64) as pool:
             burst_echoes = list(pool.map(send, range(400, 900)))
         assert len(burst_echoes) == 500
         assert all(e.startswith("test-") for e in burst_echoes)
 
-        # Force-stop/network-loss simulation: clients may disappear after sending a valid request.
-        # These disconnects must not damage the bridge or alter its safety state.
         for _ in range(100):
             dropped = socket.create_connection(("127.0.0.1", port), timeout=3)
             dropped.sendall(
@@ -181,7 +182,6 @@ def main():
         server.shutdown()
         server.server_close()
 
-    # Repeated cold restart/reconnect on the same port must work immediately and stay safe.
     for _ in range(10):
         restarted, restarted_base = start_phone_link("127.0.0.1", port)
         try:
