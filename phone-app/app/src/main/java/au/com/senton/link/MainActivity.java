@@ -306,9 +306,9 @@ public class MainActivity extends Activity {
                 String sha = json.optString("sha256", "").trim().toLowerCase(Locale.US);
                 if (remoteVersion.isEmpty() || !apkUrl.startsWith("https://") || !sha.matches("[0-9a-f]{64}")) throw new SecurityException("Invalid update manifest");
                 if (isNewer(remoteVersion, BuildConfig.VERSION_NAME)) {
-                    if (downloadId != -1) runOnUiThread(() -> updateStatus.setText("Update download already queued"));
+                    if (downloadId != -1) runOnUiThread(() -> updateStatus.setText("Update in progress — download already queued"));
                     else {
-                        runOnUiThread(() -> updateStatus.setText("Update " + remoteVersion + " found — downloading…"));
+                        runOnUiThread(() -> updateStatus.setText("Update in progress — downloading Senton Link " + remoteVersion + "…"));
                         startUpdateDownload(apkUrl, remoteVersion, sha);
                     }
                 } else runOnUiThread(() -> updateStatus.setText("Wi-Fi updates: current (" + BuildConfig.VERSION_NAME + ")"));
@@ -360,6 +360,7 @@ public class MainActivity extends Activity {
             expectedSha = "";
             return;
         }
+        updateStatus.setText("Update in progress — verifying downloaded update…");
         new Thread(() -> {
             try {
                 if (!expectedSha.matches("[0-9a-f]{64}") || !expectedSha.equalsIgnoreCase(sha256(uri))) {
@@ -374,7 +375,7 @@ public class MainActivity extends Activity {
     }
 
     private void launchInstaller(Uri uri) {
-        updateStatus.setText("Update verified — opening Android installer…");
+        updateStatus.setText("Update in progress — verified, opening Android installer…");
         Intent install = new Intent(Intent.ACTION_VIEW);
         install.setDataAndType(uri, "application/vnd.android.package-archive");
         install.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
