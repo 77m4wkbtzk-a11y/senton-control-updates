@@ -4,7 +4,6 @@ set -euo pipefail
 APK="${1:-phone-app/app/build/outputs/apk/debug/app-debug.apk}"
 PKG="com.senton.link"
 MAIN="com.senton.link/.MainActivity"
-UPDATE="com.senton.link/.UpdateProgressActivity"
 TMP="${RUNNER_TEMP:-/tmp}/senton-link-emulator-test"
 mkdir -p "$TMP"
 
@@ -54,6 +53,30 @@ raise SystemExit(f'{label} button missing')
 PY
 }
 
+tap_text() {
+  local label="$1"
+  dump_ui
+  local xy
+  xy=$(python3 - "$TMP/window.xml" "$label" <<'PY'
+import re
+import sys
+import xml.etree.ElementTree as ET
+path, label = sys.argv[1:]
+root = ET.parse(path).getroot()
+for node in root.iter('node'):
+    if node.attrib.get('text') == label:
+        m = re.fullmatch(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]', node.attrib.get('bounds', ''))
+        if not m:
+            raise SystemExit(f'No bounds for {label}')
+        x1, y1, x2, y2 = map(int, m.groups())
+        print((x1 + x2) // 2, (y1 + y2) // 2)
+        raise SystemExit(0)
+raise SystemExit(f'{label} control missing')
+PY
+)
+  adb shell input tap $xy
+}
+
 require_safe_dashboard() {
   require_text "SENTON PI DISCONNECTED — SAFE MODE"
   require_text "Safety mode     Active"
@@ -93,9 +116,10 @@ wait_boot
 [ -s "$APK" ] || die "APK missing: $APK"
 adb install -r -t "$APK" >/dev/null
 adb shell pm clear "$PKG" >/dev/null
+adb logcat -c
 
-# The app must be a valid HOME target, but this emulator test does not need to
-# change the user's real phone launcher/default-app settings.
+# The app must be a valid HOME target, but this emulator test does not change
+# any launcher/default-app setting on the user's physical phone.
 adb shell cmd package query-activities -a android.intent.action.MAIN -c android.intent.category.HOME > "$TMP/home.txt"
 grep -Fq "$PKG" "$TMP/home.txt" || die "Senton Link is not registered as a HOME activity"
 
@@ -137,36 +161,45 @@ start_normal
 require_safe_dashboard
 forbid_text "UNDER TESTING"
 
-# Exercise updater failure/retry behavior on the emulator by forcing the
-# Android global HTTP proxy to an unreachable local endpoint. This contains
-# network disruption to the disposable emulator only.
+# Exercise updater failure/retry behavior by routing only the disposable
+# emulator through an unreachable proxy. Open UPDATE through the real app UI so
+# the non-exported update Activity is tested the same way a user reaches it.
 adb shell settings put global http_proxy 127.0.0.1:9
-adb shell am force-stop "$PKG"
-adb shell am start -W -n "$UPDATE" >/dev/null || true
+tap_text "UPDATE"
 sleep 12
 require_text "UPDATE CHECK FAILED"
 
-# Restore network routing and rapidly relaunch/retry the updater. Regardless of
-# remote availability/version, the app must stay alive and return to a defined
-# updater state instead of crashing or enabling vehicle controls.
-adb shell settings put global http_proxy :0
-for _ in $(seq 1 5); do
-  adb shell am force-stop "$PKG"
-  adb shell am start -W -n "$UPDATE" >/dev/null || true
-  sleep 1
-  adb shell pidof "$PKG" >/dev/null || die "Updater process died during retry cycle"
+# Repeated taps must not crash or create overlapping unsafe UI state.
+for _ in $(seq 1 8); do
+  tap_text "CHECK FOR UPDATE"
 done
+sleep 1
+adb shell pidof "$PKG" >/dev/null || die "Updater process died during failed retry burst"
+
+# Restore emulator networking and retry repeatedly. The remote channel may say
+# up-to-date, may expose a newer build, or may be temporarily unavailable; none
+# of those outcomes may crash the app or change fail-closed vehicle controls.
+adb shell settings put global http_proxy :0
+for _ in $(seq 1 8); do
+  tap_text "CHECK FOR UPDATE"
+done
+sleep 12
+adb shell pidof "$PKG" >/dev/null || die "Updater process died after network restoration"
+
+# Close updater through its real UI and verify the dashboard is still locked.
+tap_text "BACK TO DASHBOARD"
+sleep 0.5
+require_safe_dashboard
 
 # Final cold start after network restoration must always be fail-closed.
 adb shell am force-stop "$PKG"
 start_normal
 require_safe_dashboard
 
-# Scan app process crashes/ANRs from this isolated emulator run.
-adb shell dumpsys activity processes > "$TMP/activity-processes.txt" || true
+# Scan app-process crashes/ANRs from this isolated emulator run.
 adb logcat -d -v brief > "$TMP/logcat.txt"
 if grep -E 'FATAL EXCEPTION:.*|ANR in com\.senton\.link|Process: com\.senton\.link.*FATAL' "$TMP/logcat.txt"; then
   die "Crash/ANR signature found in emulator logcat"
 fi
 
-echo "Senton Link Android EMULATOR hard test passed: 20 cold starts, rapid relaunches, 10 background/foreground cycles, Test Mode warning/keep-screen-on checks, updater network-loss/retry cycles, and fail-closed controls"
+echo "Senton Link Android EMULATOR hard test passed: 20 cold starts, rapid relaunches, 10 background/foreground cycles, Test Mode warning/keep-screen-on checks, updater network-loss/retry bursts, and fail-closed controls"
