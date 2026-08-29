@@ -1,10 +1,10 @@
 {
     "version":  "1.2.12.6",
-    "owner_admin_sha256":  "1f351a46f7310c292a0e8a5602425c060087d8e977eee49b202518f6ff7f9cc2",
+    "owner_admin_sha256":  "c8310f90a7b6d02d050b30693809cfa4ddc352103025952a31de8495ddb0db90",
     "download_url":  "https://raw.githubusercontent.com/77m4wkbtzk-a11y/senton-control-updates/main/releases/Senton-Control.exe",
     "channel":  "public",
     "required":  false,
     "owner_admin_download_url":  "https://raw.githubusercontent.com/77m4wkbtzk-a11y/senton-control-updates/main/releases/Senton-Control-Owner-Admin.exe",
     "notes":  "Senton Control v1.2.12.6 verified update: hardened Senton Link phone bridge, fast progress download, SHA-256 verification, updater rollback protection, Privacy Guard, and human-reviewed Missing Person assistance.",
-    "sha256":  "880789e3e0cc3f6b6bb812fff4e5460c01fb5db4ff744513a64f03349a5a40f5"
+    "sha256":  "4d4f4f0cbec1e06f9cdf9039e7c0ae746632892a75c522b92a891890f47a44d4"
 }
