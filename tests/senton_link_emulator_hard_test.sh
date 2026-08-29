@@ -67,6 +67,8 @@ require_text_current() {
   local value="$1"
   local _
   for _ in $(seq 1 20); do
+    dismiss_unrelated_system_dialogs
+    dismiss_android_immersive_cling
     if ui_has_text "$value"; then
       return 0
     fi
@@ -78,8 +80,11 @@ require_text_current() {
 require_text_anywhere() {
   local value="$1"
   local pass
+  dismiss_unrelated_system_dialogs
+  dismiss_android_immersive_cling
   scroll_to_top
   for pass in $(seq 1 10); do
+    dismiss_unrelated_system_dialogs
     if ui_has_text "$value"; then
       scroll_to_top
       return 0
@@ -92,6 +97,8 @@ require_text_anywhere() {
 
 forbid_text_current() {
   local value="$1"
+  dismiss_unrelated_system_dialogs
+  dismiss_android_immersive_cling
   dump_ui || die "Unable to dump UI while checking forbidden text: $value"
   if grep -Fq -- "$value" "$TMP/window.xml"; then
     die "Unexpected UI text present: $value"
@@ -118,8 +125,11 @@ PY
 require_disabled_button_anywhere() {
   local label="$1"
   local pass rc
+  dismiss_unrelated_system_dialogs
+  dismiss_android_immersive_cling
   scroll_to_top
   for pass in $(seq 1 10); do
+    dismiss_unrelated_system_dialogs
     if button_state_in_view "$label"; then
       scroll_to_top
       return 0
@@ -157,6 +167,27 @@ raise SystemExit(1)
 PY
 }
 
+dismiss_unrelated_system_dialogs() {
+  local xy
+  dump_ui || return 0
+
+  # Never hide an app failure. A Senton ANR is a real test failure and must stop CI.
+  if grep -Fq "Senton Link isn't responding" "$TMP/window.xml"; then
+    die "Senton Link ANR dialog detected"
+  fi
+
+  # Disposable Android images can occasionally surface launcher/System UI ANRs while
+  # the Senton activity underneath is healthy. Close only those unrelated system
+  # dialogs so they cannot mask the app from UIAutomator.
+  if grep -Fq "isn't responding" "$TMP/window.xml"; then
+    if xy=$(control_xy_in_view "Close app"); then
+      adb shell input tap $xy >/dev/null 2>&1 || true
+      sleep 0.35
+      return 0
+    fi
+  fi
+}
+
 dismiss_android_immersive_cling() {
   local xy
   # Fresh Android emulators display a system-owned "Viewing full screen" education
@@ -176,8 +207,11 @@ dismiss_android_immersive_cling() {
 tap_text_anywhere() {
   local label="$1"
   local pass xy
+  dismiss_unrelated_system_dialogs
+  dismiss_android_immersive_cling
   scroll_to_top
   for pass in $(seq 1 10); do
+    dismiss_unrelated_system_dialogs
     if xy=$(control_xy_in_view "$label"); then
       adb shell input tap $xy
       sleep 0.15
@@ -190,6 +224,7 @@ tap_text_anywhere() {
 
 require_safe_dashboard() {
   # Wait for the freshly launched Activity to finish rendering before testing it.
+  dismiss_unrelated_system_dialogs
   dismiss_android_immersive_cling
   scroll_to_top
   require_text_current "SENTON PI DISCONNECTED"
@@ -203,6 +238,7 @@ require_safe_dashboard() {
 }
 
 require_test_banner() {
+  dismiss_unrelated_system_dialogs
   dismiss_android_immersive_cling
   scroll_to_top
   require_text_current "UNDER TESTING"
@@ -226,11 +262,13 @@ require_keep_screen_released() {
 
 start_normal() {
   adb shell am start -W -n "$MAIN" >/dev/null
+  dismiss_unrelated_system_dialogs
   dismiss_android_immersive_cling
 }
 
 start_test_mode() {
   adb shell am start -W -n "$MAIN" --ez senton_test_mode true >/dev/null
+  dismiss_unrelated_system_dialogs
   dismiss_android_immersive_cling
 }
 
@@ -253,6 +291,7 @@ for _ in $(seq 1 20); do
   require_safe_dashboard
   forbid_text_current "UNDER TESTING"
   adb shell am start -W -n "$MAIN" >/dev/null
+  dismiss_unrelated_system_dialogs
   dismiss_android_immersive_cling
   require_safe_dashboard
 done
@@ -266,12 +305,14 @@ require_test_banner
 require_keep_screen_on
 
 # Exercise repeated foreground/background transitions without creating a new
-# Activity. REORDER_TO_FRONT brings the same Test Mode instance back.
+# Senton Activity. Use Android Settings as the temporary foreground activity so
+# the lifecycle test does not depend on Pixel Launcher health on the disposable VM.
 for _ in $(seq 1 10); do
-  adb shell input keyevent KEYCODE_HOME
+  adb shell am start -W -a android.settings.SETTINGS >/dev/null
   sleep 0.25
   require_keep_screen_released
   adb shell am start -W --activity-reorder-to-front -n "$MAIN" >/dev/null
+  dismiss_unrelated_system_dialogs
   dismiss_android_immersive_cling
   require_test_banner
   require_safe_dashboard
@@ -320,10 +361,11 @@ adb shell am force-stop "$PKG"
 start_normal
 require_safe_dashboard
 
-# Scan app-process crashes/ANRs from this isolated emulator run.
+# Scan app-process crashes/ANRs from this isolated emulator run. Unrelated Android
+# system-process failures are deliberately not treated as Senton app failures.
 adb logcat -d -v brief > "$TMP/logcat.txt"
 if grep -E 'FATAL EXCEPTION:.*|ANR in com\.senton\.link|Process: com\.senton\.link.*FATAL' "$TMP/logcat.txt"; then
-  die "Crash/ANR signature found in emulator logcat"
+  die "Crash/ANR signature found in Senton Link emulator logcat"
 fi
 
 echo "Senton Link Android EMULATOR hard test passed: 20 cold starts, rapid relaunches, 10 background/foreground cycles, Test Mode warning/keep-screen-on checks, updater network-loss/retry bursts, and fail-closed controls"
