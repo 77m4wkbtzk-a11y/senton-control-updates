@@ -5,8 +5,6 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.os.Bundle;
-import android.os.Handler;
-import android.os.Looper;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
@@ -20,14 +18,11 @@ public class MainActivity extends Activity {
     private static final String PREFS = "senton_link";
     private static final String KEY_UPDATE_STAGE = "update_stage";
     private static final String EXTRA_TEST_MODE = "senton_test_mode";
-    private static final long TEST_MODE_MAX_MS = 15 * 60 * 1000L;
 
     private TextView updateStatus;
     private TextView testBanner;
     private TextView systemPanel;
     private boolean testMode;
-    private final Handler testModeHandler = new Handler(Looper.getMainLooper());
-    private final Runnable testModeTimeout = this::exitTemporaryTestMode;
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -35,7 +30,6 @@ public class MainActivity extends Activity {
         testMode = getIntent() != null && getIntent().getBooleanExtra(EXTRA_TEST_MODE, false);
         if (testMode) {
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-            testModeHandler.postDelayed(testModeTimeout, TEST_MODE_MAX_MS);
         }
 
         ScrollView scroll = new ScrollView(this);
@@ -88,32 +82,24 @@ public class MainActivity extends Activity {
 
     @Override protected void onResume() {
         super.onResume();
+        if (testMode) {
+            getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+            if (testBanner != null) testBanner.setVisibility(View.VISIBLE);
+        }
+        if (systemPanel != null) systemPanel.setText(systemText());
         updateStatus.setText(getSharedPreferences(PREFS, MODE_PRIVATE).getString(KEY_UPDATE_STAGE, "Wi-Fi updates: open UPDATE for status"));
     }
 
     @Override protected void onPause() {
-        if (testMode) exitTemporaryTestMode();
+        if (testMode) {
+            getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        }
         super.onPause();
-    }
-
-    @Override protected void onDestroy() {
-        testModeHandler.removeCallbacks(testModeTimeout);
-        super.onDestroy();
     }
 
     private String systemText() {
         return "SYSTEM\n\nApp status      " + (testMode ? "TESTING" : "OK") +
                 "\nUpdate channel  Beta\nVehicle link    Disconnected\nSafety mode     Active";
-    }
-
-    private void exitTemporaryTestMode() {
-        if (!testMode) return;
-        testMode = false;
-        testModeHandler.removeCallbacks(testModeTimeout);
-        getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-        if (getIntent() != null) getIntent().removeExtra(EXTRA_TEST_MODE);
-        if (testBanner != null) testBanner.setVisibility(View.GONE);
-        if (systemPanel != null) systemPanel.setText(systemText());
     }
 
     private TextView panel(String s) { TextView t=text(s,14,Color.rgb(220,232,244),false); t.setPadding(dp(16),dp(16),dp(16),dp(16)); t.setBackgroundColor(Color.rgb(18,29,43)); return t; }
