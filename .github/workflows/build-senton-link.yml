@@ -50,21 +50,19 @@ jobs:
 
       # CI test APKs use a stable, public, test-only signing key so a newer test APK
       # can update an older test APK on the dedicated test phone. This key is not a
-      # production trust boundary and must never be used by the release signing config.
+      # production trust boundary and is never used by the release signing config.
       - name: Install stable CI test signing key
         run: |
-          mkdir -p "$HOME/.android"
-          base64 --decode phone-app/ci/senton-link-ci-debug.keystore.b64 > "$HOME/.android/debug.keystore"
-          test -s "$HOME/.android/debug.keystore"
-          chmod 600 "$HOME/.android/debug.keystore"
+          TEST_KEYSTORE="$RUNNER_TEMP/senton-link-ci-debug.keystore"
+          base64 --decode phone-app/ci/senton-link-ci-debug.keystore.b64 > "$TEST_KEYSTORE"
+          test -s "$TEST_KEYSTORE"
+          chmod 600 "$TEST_KEYSTORE"
           keytool -list -v \
-            -keystore "$HOME/.android/debug.keystore" \
+            -keystore "$TEST_KEYSTORE" \
             -storepass android \
             -alias androiddebugkey | grep -F "SHA256: 26:F7:4E:DA:04:2A:9F:7B:17:CF:11:D4:CD:51:81:B8:5C:89:58:D8:7B:C5:93:62:D0:A7:D9:64:74:80:77:6E"
+          echo "SENTON_TEST_KEYSTORE_FILE=$TEST_KEYSTORE" >> "$GITHUB_ENV"
 
-      # Always produce a non-production test APK after the fail-safe gates pass.
-      # This APK is only for controlled launcher/app testing and is never published
-      # to the production phone update channel.
       - name: Build hard-tested debug APK
         working-directory: phone-app
         run: /tmp/gradle-8.7/bin/gradle --no-daemon clean assembleDebug
