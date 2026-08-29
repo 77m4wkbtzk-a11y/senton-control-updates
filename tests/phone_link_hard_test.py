@@ -218,11 +218,15 @@ def main():
     else:
         raise AssertionError("Bridge remained reachable after shutdown")
 
-    # Cold stop/rebind cycles must always return in Safe Mode with actuation locked.
+    # Cold stop/rebind cycles must always return in Safe Mode with actuation locked,
+    # and transient Test Mode preview state must never leak across a bridge restart.
     for _ in range(20):
         restarted, restarted_base = start_phone_link("127.0.0.1", port)
         try:
-            assert_safe(get_json(restarted_base + "/senton/status"))
+            restarted_status = get_json(restarted_base + "/senton/status")
+            assert_safe(restarted_status)
+            assert restarted_status["preview_active"] is False
+            assert restarted_status["message"] == "Windows link ready"
             for route in ("/senton/drive", "/senton/solar-charge"):
                 blocked = expect_http_error(Request(restarted_base + route, data=b"{}", method="POST"), 403)
                 assert blocked["error"] == "command_locked"
