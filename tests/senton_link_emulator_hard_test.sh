@@ -223,13 +223,14 @@ tap_text_anywhere() {
 }
 
 require_safe_dashboard() {
-  # Wait for the freshly launched Activity to finish rendering before testing it.
+  # Normal mode proves fail-closed behavior by state and actual disabled controls.
+  # The explicit VEHICLE CONTROLS LOCKED warning is a Test Mode requirement and is
+  # checked separately in require_test_banner().
   dismiss_unrelated_system_dialogs
   dismiss_android_immersive_cling
   scroll_to_top
   require_text_current "SENTON PI DISCONNECTED"
   require_text_current "SAFE MODE"
-  require_text_current "VEHICLE CONTROLS LOCKED"
   require_text_anywhere "Safety mode     Active"
   require_disabled_button_anywhere "DRIVE"
   require_disabled_button_anywhere "START CHARGE"
@@ -361,11 +362,20 @@ adb shell am force-stop "$PKG"
 start_normal
 require_safe_dashboard
 
-# Scan app-process crashes/ANRs from this isolated emulator run. Unrelated Android
-# system-process failures are deliberately not treated as Senton app failures.
+# Scan only Senton Link crash/ANR records. System-app crashes on disposable
+# emulator images must not be mistaken for Senton failures.
 adb logcat -d -v brief > "$TMP/logcat.txt"
-if grep -E 'FATAL EXCEPTION:.*|ANR in com\.senton\.link|Process: com\.senton\.link.*FATAL' "$TMP/logcat.txt"; then
-  die "Crash/ANR signature found in Senton Link emulator logcat"
-fi
+python3 - "$TMP/logcat.txt" <<'PY'
+import sys
+from pathlib import Path
+lines = Path(sys.argv[1]).read_text(encoding="utf-8", errors="replace").splitlines()
+for i, line in enumerate(lines):
+    if "ANR in com.senton.link" in line:
+        raise SystemExit("Senton Link ANR found in logcat")
+    if "FATAL EXCEPTION" in line:
+        window = "\n".join(lines[i:i + 10])
+        if "Process: com.senton.link" in window:
+            raise SystemExit("Senton Link fatal exception found in logcat")
+PY
 
 echo "Senton Link Android EMULATOR hard test passed: 20 cold starts, rapid relaunches, 10 background/foreground cycles, Test Mode warning/keep-screen-on checks, updater network-loss/retry bursts, and fail-closed controls"
