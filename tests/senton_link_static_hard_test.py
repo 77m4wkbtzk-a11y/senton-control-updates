@@ -12,14 +12,34 @@ assert 'android.permission.INTERNET' in manifest
 assert 'android.permission.REQUEST_INSTALL_PACKAGES' in manifest
 assert 'android:usesCleartextTraffic="true"' in manifest
 
-# Launcher integrity: exactly one launcher target and it must be MainActivity.
+# Launcher integrity: MainActivity remains the single app launcher and is also an optional HOME target.
 assert manifest.count('<action android:name="android.intent.action.MAIN" />') == 1
 assert manifest.count('<category android:name="android.intent.category.LAUNCHER" />') == 1
+assert manifest.count('<category android:name="android.intent.category.HOME" />') == 1
+assert manifest.count('<category android:name="android.intent.category.DEFAULT" />') == 1
 assert 'android:name=".MainActivity"' in manifest
 assert 'android:name=".UpdateProgressActivity"' in manifest
 assert 'android:exported="false"' in manifest
 assert 'TestModeActivity' not in manifest
 assert not (ROOT / "phone-app/app/src/main/java/au/com/senton/link/TestModeActivity.java").exists()
+
+# Launcher/kiosk foundation must stay reversible and non-privileged.
+for required_launcher in [
+    'Launcher Mode',
+    'Launcher mode   Ready',
+    'applyImmersiveLauncherUi()',
+    'SYSTEM_UI_FLAG_IMMERSIVE_STICKY',
+    'SYSTEM_UI_FLAG_FULLSCREEN',
+    'SYSTEM_UI_FLAG_HIDE_NAVIGATION',
+    'HOLD FOR ANDROID MAINTENANCE',
+    'setOnLongClickListener',
+    'Settings.ACTION_SETTINGS',
+    'Long-press only. Opens Android settings',
+]:
+    assert required_launcher in main_java, required_launcher
+assert 'DevicePolicyManager' not in main_java
+assert 'startLockTask()' not in main_java
+assert 'stopLockTask()' not in main_java
 
 # Hard-test mode is allowed only inside MainActivity. It must remain selected across
 # foreground/background transitions, request keep-screen-on only while foregrounded,
@@ -200,7 +220,7 @@ for required_status in [
 ]:
     assert required_status in update_java, required_status
 
-# Vehicle and solar-charge controls remain fail-closed and non-actuating in normal and test mode.
+# Vehicle and solar-charge controls remain fail-closed and non-actuating in normal, launcher and test mode.
 for forbidden in [
     'button("DRIVE", true)',
     'button("START CHARGE", true)',
