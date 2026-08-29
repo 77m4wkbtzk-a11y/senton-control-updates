@@ -95,6 +95,22 @@ require_text_anywhere() {
   die "UI text missing after scrolling dashboard: $value"
 }
 
+wait_for_text_current() {
+  local value="$1"
+  local seconds="${2:-25}"
+  local _
+  scroll_to_top
+  for _ in $(seq 1 "$seconds"); do
+    dismiss_unrelated_system_dialogs
+    dismiss_android_immersive_cling
+    if ui_has_text "$value"; then
+      return 0
+    fi
+    sleep 1
+  done
+  die "Timed out waiting for UI text: $value"
+}
+
 forbid_text_current() {
   local value="$1"
   dismiss_unrelated_system_dialogs
@@ -273,6 +289,40 @@ start_test_mode() {
   dismiss_android_immersive_cling
 }
 
+emulator_network_off() {
+  # Use multiple emulator-only controls. The loopback proxy is the deterministic
+  # application-level block; radio/airplane toggles additionally exercise Android's
+  # connectivity-loss lifecycle without touching any physical device.
+  adb shell settings put global http_proxy 127.0.0.1:9
+  adb shell svc wifi disable >/dev/null 2>&1 || true
+  adb shell svc data disable >/dev/null 2>&1 || true
+  adb shell cmd connectivity airplane-mode enable >/dev/null 2>&1 || {
+    adb shell settings put global airplane_mode_on 1 >/dev/null 2>&1 || true
+    adb shell am broadcast -a android.intent.action.AIRPLANE_MODE --ez state true >/dev/null 2>&1 || true
+  }
+  sleep 2
+  local proxy
+  proxy=$(adb shell settings get global http_proxy 2>/dev/null | tr -d '\r')
+  [ "$proxy" = "127.0.0.1:9" ] || die "Disposable emulator did not apply the offline proxy"
+}
+
+emulator_network_restore() {
+  adb shell settings put global http_proxy :0 >/dev/null 2>&1 || true
+  adb shell cmd connectivity airplane-mode disable >/dev/null 2>&1 || {
+    adb shell settings put global airplane_mode_on 0 >/dev/null 2>&1 || true
+    adb shell am broadcast -a android.intent.action.AIRPLANE_MODE --ez state false >/dev/null 2>&1 || true
+  }
+  adb shell svc wifi enable >/dev/null 2>&1 || true
+  adb shell svc data enable >/dev/null 2>&1 || true
+  sleep 3
+  local proxy
+  proxy=$(adb shell settings get global http_proxy 2>/dev/null | tr -d '\r')
+  case "$proxy" in
+    ""|":0"|"null") ;;
+    *) die "Disposable emulator proxy did not clear after network restoration: $proxy" ;;
+  esac
+}
+
 wait_boot
 [ -s "$APK" ] || die "APK missing: $APK"
 adb install -r -t "$APK" >/dev/null
@@ -327,13 +377,15 @@ start_normal
 require_safe_dashboard
 forbid_text_current "UNDER TESTING"
 
-# Exercise updater failure/retry behavior by routing only the disposable
-# emulator through an unreachable proxy. Open UPDATE through the real app UI so
-# the non-exported update Activity is tested the same way a user reaches it.
-adb shell settings put global http_proxy 127.0.0.1:9
+# Exercise a real connectivity-loss transition on the disposable emulator and
+# independently force app HTTP through an unreachable loopback proxy. The prior
+# test changed only the proxy and immediately opened the updater; Android could
+# race the proxy observer and complete the request online, producing a false test
+# failure. Here the connectivity state is settled before opening UPDATE, and the
+# updater must fail closed within its bounded 10s connect/read timeouts.
+emulator_network_off
 tap_text_anywhere "UPDATE"
-sleep 12
-require_text_anywhere "UPDATE CHECK FAILED"
+wait_for_text_current "UPDATE CHECK FAILED" 25
 
 # Repeated taps must not crash or create overlapping unsafe UI state.
 for _ in $(seq 1 8); do
@@ -345,7 +397,7 @@ adb shell pidof "$PKG" >/dev/null || die "Updater process died during failed ret
 # Restore emulator networking and retry repeatedly. The remote channel may say
 # up-to-date, may expose a newer build, or may be temporarily unavailable; none
 # of those outcomes may crash the app or change fail-closed vehicle controls.
-adb shell settings put global http_proxy :0
+emulator_network_restore
 for _ in $(seq 1 8); do
   tap_text_anywhere "CHECK FOR UPDATE"
 done
