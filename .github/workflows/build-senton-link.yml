@@ -38,7 +38,7 @@ jobs:
       - name: Build debug APK
         working-directory: phone-app
         run: /tmp/gradle-8.7/bin/gradle --no-daemon assembleDebug
-      - name: Publish priority phone APK
+      - name: Publish Senton Link 2.2.0-beta
         run: |
           git fetch origin main
           remote_sha=$(git rev-parse origin/main)
@@ -51,18 +51,18 @@ jobs:
           sha=$(sha256sum phone-releases/Senton-Link.apk | awk '{print $1}')
           cat > phone-update.json <<EOF
           {
-            "version": "2.1",
-            "versionCode": 2100,
+            "version": "2.2.0-beta",
+            "versionCode": 2200,
             "download_url": "https://raw.githubusercontent.com/77m4wkbtzk-a11y/senton-control-updates/main/phone-releases/Senton-Link.apk",
             "sha256": "$sha",
-            "channel": "priority-override",
-            "priority": "critical",
-            "mandatory": true,
-            "notes": "Priority override update: Senton Link 2.1 updater test."
+            "channel": "beta",
+            "priority": "normal",
+            "mandatory": false,
+            "notes": "Senton Link 2.2.0-beta: new dashboard, telemetry placeholders, solar-charge controls and verified Wi-Fi updater under com.senton.link."
           }
           EOF
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add phone-releases/Senton-Link.apk phone-update.json
-          git diff --cached --quiet || git commit -m "Publish Senton Link priority override 2.1"
+          git diff --cached --quiet || git commit -m "Publish Senton Link 2.2.0-beta"
           git push origin main
