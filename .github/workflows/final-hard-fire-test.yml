@@ -160,7 +160,9 @@ jobs:
           $actualHash = (Get-FileHash -LiteralPath $current -Algorithm SHA256).Hash.ToLowerInvariant()
           if ($actualHash -ne $expectedHash) { throw 'Installed EXE SHA-256 does not match replacement.' }
 
-          $backup = Join-Path $root 'Senton Control.backup.exe'
-          if (-not (Test-Path $backup)) { throw 'Previous executable backup was not preserved.' }
+          $backups = @(Get-ChildItem -LiteralPath $root -Filter 'Senton Control.backup.*.exe' -File)
+          if ($backups.Count -lt 1) { throw 'Previous executable unique rollback backup was not preserved.' }
+          $backupMarkers = @(Get-ChildItem -LiteralPath $root -Filter 'Senton Control.backup.*.timestamp' -File)
+          if ($backupMarkers.Count -lt 1) { throw 'Rollback backup timestamp marker was not preserved.' }
 
-          Write-Host 'FINAL HARD FIRE PASS: close, backup, replace, SHA-256 verify, clean relaunch, and replacement startup all succeeded.'
+          Write-Host 'FINAL HARD FIRE PASS: close, unique backup, replace, SHA-256 verify, clean relaunch, and replacement startup all succeeded.'
