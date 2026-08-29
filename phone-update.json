@@ -1,10 +1,10 @@
 {
-  "version": "2.2.0-beta",
-  "versionCode": 2200,
+  "version": "2.3.0-beta",
+  "versionCode": 2300,
   "download_url": "https://raw.githubusercontent.com/77m4wkbtzk-a11y/senton-control-updates/main/phone-releases/Senton-Link.apk",
-  "sha256": "fb3ede09c18da3110d4dbf08e0f15ad9f68123ccb131e45944fc64d2b3d2e332",
+  "sha256": "1175d36d27b93d3976c9eaaf5a07694a0f094936b57b92a0b400a9af6036873d",
   "channel": "beta",
   "priority": "normal",
   "mandatory": false,
-  "notes": "Senton Link 2.2.0-beta: new dashboard, telemetry placeholders, solar-charge controls and verified Wi-Fi updater under com.senton.link."
+  "notes": "Senton Link 2.3.0-beta: phone-to-Windows Senton Control bridge, PC connection status, telemetry sync and safe test messaging."
 }
