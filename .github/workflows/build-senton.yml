@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - 'source/**'
+      - 'tests/phone_link_hard_test.py'
       - '.github/workflows/build-senton.yml'
   workflow_dispatch:
 
@@ -35,7 +36,7 @@ jobs:
       - name: Validate source
         shell: powershell
         run: |
-          python -m py_compile source/admin_main.py source/main.py source/config.py source/pi_client.py source/updater.py source/installer_no_relaunch.py source/progress_updater.py source/dashboard.py source/cleanup.py source/privacy_guard.py source/missing_person.py source/missing_person_camera.py source/universal_updater_ui.py
+          python -m py_compile source/admin_main.py source/main.py source/config.py source/pi_client.py source/updater.py source/installer_no_relaunch.py source/progress_updater.py source/dashboard.py source/cleanup.py source/privacy_guard.py source/missing_person.py source/missing_person_camera.py source/universal_updater_ui.py source/phone_link_server.py
 
       - name: Hard test simulation updater old-update cleanup Privacy Guard and Missing Person Assistance
         shell: powershell
@@ -61,7 +62,7 @@ jobs:
           from privacy_guard import PrivacyGuard
           from updater import verify_file_sha256
 
-          assert config.APP_VERSION == "1.2.12.2", f"Unexpected build version: {config.APP_VERSION}"
+          assert config.APP_VERSION == "1.2.12.6", f"Unexpected build version: {config.APP_VERSION}"
           assert config.PRIVACY_GUARD_RELEASE_READY is True
           assert hasattr(universal_updater_ui, "install_universal_update_button")
           assert hasattr(installer_no_relaunch, "install_update_no_relaunch")
@@ -200,6 +201,10 @@ jobs:
           print(f"Senton Control v{config.APP_VERSION} hard tests passed, including no-relaunch updater and human-reviewed missing-person camera assistance")
           '@ | python -
 
+      - name: Hard test Senton Link phone bridge
+        shell: powershell
+        run: python tests/phone_link_hard_test.py
+
       - name: Build public EXE
         shell: powershell
         run: |
@@ -241,7 +246,7 @@ jobs:
             sha256 = $hash
             owner_admin_download_url = "https://raw.githubusercontent.com/77m4wkbtzk-a11y/senton-control-updates/main/releases/Senton-Control-Owner-Admin.exe"
             owner_admin_sha256 = $adminHash
-            notes = "Senton Control v$($version.Trim()) verified update: fast progress download, SHA-256 verification, no automatic relaunch, Privacy Guard, and human-reviewed Missing Person camera/vehicle assistance."
+            notes = "Senton Control v$($version.Trim()) verified update: hardened Senton Link phone bridge, fast progress download, SHA-256 verification, updater rollback protection, Privacy Guard, and human-reviewed Missing Person assistance."
             required = $false
             channel = "public"
           } | ConvertTo-Json
