@@ -1,10 +1,10 @@
 {
-  "version": "2.3.0-beta",
-  "versionCode": 2300,
+  "version": "2.3.1-beta",
+  "versionCode": 2301,
   "download_url": "https://raw.githubusercontent.com/77m4wkbtzk-a11y/senton-control-updates/main/phone-releases/Senton-Link.apk",
-  "sha256": "1175d36d27b93d3976c9eaaf5a07694a0f094936b57b92a0b400a9af6036873d",
+  "sha256": "433fd55ecf4783e806d66bfb4dd2689c67a081671fb42e4505d6353f068f7fd1",
   "channel": "beta",
   "priority": "normal",
   "mandatory": false,
-  "notes": "Senton Link 2.3.0-beta: phone-to-Windows Senton Control bridge, PC connection status, telemetry sync and safe test messaging."
+  "notes": "Senton Link 2.3.1-beta hard-test build: automatic PC reconnect/telemetry polling, persisted PC address, fail-closed protocol checks, repeated-update protection, and locked vehicle/charge controls."
 }
