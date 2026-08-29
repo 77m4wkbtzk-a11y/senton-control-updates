@@ -21,18 +21,30 @@ assert 'android:exported="false"' in manifest
 assert 'TestModeActivity' not in manifest
 assert not (ROOT / "phone-app/app/src/main/java/au/com/senton/link/TestModeActivity.java").exists()
 
-# Test Mode must be completely absent from the shipping phone app.
-for forbidden in [
-    'TEST_MODE',
-    'BuildConfig.TEST_MODE',
+# Temporary hard-test mode is allowed only inside MainActivity and must never become a launcher or persisted app mode.
+for required_test_mode in [
+    'EXTRA_TEST_MODE = "senton_test_mode"',
+    'getBooleanExtra(EXTRA_TEST_MODE, false)',
     'UNDER TESTING',
-    'KEEP USB CONNECTED',
-    'TESTING IN PROGRESS',
-    'DO NOT MOVE OR TURN OFF THIS PHONE',
+    'TEMPORARY HARD-TEST SESSION',
+    'VEHICLE CONTROLS LOCKED',
+    'FLAG_KEEP_SCREEN_ON',
+    'TEST_MODE_MAX_MS',
+    '15 * 60 * 1000L',
+    'exitTemporaryTestMode()',
+    'getIntent().removeExtra(EXTRA_TEST_MODE)',
+    'testBanner.setVisibility(View.GONE)',
+    'getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)',
+    'if (testMode) exitTemporaryTestMode();',
 ]:
-    assert forbidden not in main_java, forbidden
-    assert forbidden not in update_java, forbidden
-    assert forbidden not in manifest, forbidden
+    assert required_test_mode in main_java, required_test_mode
+assert 'TestModeActivity' not in main_java
+assert 'BuildConfig.TEST_MODE' not in main_java
+assert "putBoolean(EXTRA_TEST_MODE" not in main_java
+assert "putString(EXTRA_TEST_MODE" not in main_java
+assert 'senton_test_mode' not in update_java
+assert 'UNDER TESTING' not in update_java
+assert 'senton_test_mode' not in manifest
 
 # Windows Link was intentionally removed from 2.3.3. No old PC-control surface may remain.
 for removed in [
@@ -153,7 +165,7 @@ for required_status in [
 ]:
     assert required_status in update_java, required_status
 
-# Vehicle and solar-charge controls remain fail-closed and non-actuating.
+# Vehicle and solar-charge controls remain fail-closed and non-actuating in normal and test mode.
 for forbidden in [
     'button("DRIVE", true)',
     'button("START CHARGE", true)',
