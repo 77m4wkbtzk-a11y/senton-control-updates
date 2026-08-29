@@ -162,6 +162,17 @@ def main():
         assert len(burst_echoes) == 500
         assert all(e.startswith("test-") for e in burst_echoes)
 
+        # Force-stop/network-loss simulation: clients may disappear after sending a valid request.
+        # These disconnects must not damage the bridge or alter its safety state.
+        for _ in range(100):
+            dropped = socket.create_connection(("127.0.0.1", port), timeout=3)
+            dropped.sendall(
+                b"GET /senton/status HTTP/1.1\r\n"
+                b"Host: 127.0.0.1\r\n"
+                b"Connection: close\r\n\r\n"
+            )
+            dropped.close()
+
         status = get_json(base + "/senton/status")
         assert status["safe_mode"] is True
         assert status["pi_connected"] is False
