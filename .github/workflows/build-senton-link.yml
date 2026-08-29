@@ -44,11 +44,11 @@ jobs:
       - name: Upload installable APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Senton-Link-2.3.1-beta-apk
+          name: Senton-Link-2.3.2-beta-apk
           path: phone-app/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
-      - name: Publish Senton Link 2.3.1-beta
+      - name: Publish Senton Link 2.3.2-beta
         run: |
           git fetch origin main
           remote_sha=$(git rev-parse origin/main)
@@ -61,18 +61,18 @@ jobs:
           sha=$(sha256sum phone-releases/Senton-Link.apk | awk '{print $1}')
           cat > phone-update.json <<EOF
           {
-            "version": "2.3.1-beta",
-            "versionCode": 2301,
+            "version": "2.3.2-beta",
+            "versionCode": 2302,
             "download_url": "https://raw.githubusercontent.com/77m4wkbtzk-a11y/senton-control-updates/main/phone-releases/Senton-Link.apk",
             "sha256": "$sha",
             "channel": "beta",
-            "priority": "normal",
+            "priority": "high",
             "mandatory": false,
-            "notes": "Senton Link 2.3.1-beta hard-test build: automatic PC reconnect/telemetry polling, persisted PC address, fail-closed protocol checks, repeated-update protection, and locked vehicle/charge controls."
+            "notes": "Senton Link 2.3.2-beta replacement build: restores the normal dashboard launcher and removes the dedicated Test Mode activity."
           }
           EOF
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add phone-releases/Senton-Link.apk phone-update.json
-          git diff --cached --quiet || git commit -m "Publish Senton Link 2.3.1-beta"
+          git diff --cached --quiet || git commit -m "Publish Senton Link 2.3.2-beta"
           git push origin main
