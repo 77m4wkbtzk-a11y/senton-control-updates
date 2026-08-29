@@ -15,6 +15,7 @@ from phone_link_server import (
     MAX_BODY_BYTES,
     PROTOCOL_VERSION,
     REQUEST_BODY_TIMEOUT_SECONDS,
+    REQUEST_QUEUE_SIZE,
     start_phone_link,
 )
 
@@ -47,6 +48,8 @@ def first_status_line(raw: socket.socket) -> bytes:
 
 
 def main():
+    assert REQUEST_QUEUE_SIZE >= 64
+
     server, base = start_phone_link("127.0.0.1", 0)
     port = server.server_address[1]
     try:
@@ -70,6 +73,7 @@ def main():
             "/senton/drive",
             "/senton/start-charge",
             "/senton/stop-charge",
+            "/senton/solar-charge",
             "/senton/throttle",
         ]:
             blocked = expect_http_error(Request(base + route, data=b"{}", method="POST"), 403)
@@ -151,6 +155,12 @@ def main():
             echoes = list(pool.map(send, range(100)))
         assert len(echoes) == 100
         assert all(e.startswith("test-") for e in echoes)
+
+        # Reconnect/telemetry storms must not overflow the TCP listen queue and reset valid clients.
+        with concurrent.futures.ThreadPoolExecutor(max_workers=64) as pool:
+            burst_echoes = list(pool.map(send, range(400, 900)))
+        assert len(burst_echoes) == 500
+        assert all(e.startswith("test-") for e in burst_echoes)
 
         status = get_json(base + "/senton/status")
         assert status["safe_mode"] is True
