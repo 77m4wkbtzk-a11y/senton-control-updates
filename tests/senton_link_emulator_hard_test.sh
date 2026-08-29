@@ -157,6 +157,22 @@ raise SystemExit(1)
 PY
 }
 
+dismiss_android_immersive_cling() {
+  local xy
+  # Fresh Android emulators display a system-owned "Viewing full screen" education
+  # overlay the first time an app enters immersive mode. It is not Senton UI and
+  # otherwise masks the dashboard from UIAutomator, so dismiss it on this disposable VM.
+  for _ in $(seq 1 8); do
+    if xy=$(control_xy_in_view "Got it"); then
+      adb shell input tap $xy >/dev/null 2>&1 || true
+      sleep 0.25
+      continue
+    fi
+    return 0
+  done
+  die "Android immersive-mode education overlay could not be dismissed"
+}
+
 tap_text_anywhere() {
   local label="$1"
   local pass xy
@@ -174,6 +190,7 @@ tap_text_anywhere() {
 
 require_safe_dashboard() {
   # Wait for the freshly launched Activity to finish rendering before testing it.
+  dismiss_android_immersive_cling
   scroll_to_top
   require_text_current "SENTON PI DISCONNECTED"
   require_text_current "SAFE MODE"
@@ -186,6 +203,7 @@ require_safe_dashboard() {
 }
 
 require_test_banner() {
+  dismiss_android_immersive_cling
   scroll_to_top
   require_text_current "UNDER TESTING"
   require_text_anywhere "TEMPORARY HARD-TEST SESSION"
@@ -208,10 +226,12 @@ require_keep_screen_released() {
 
 start_normal() {
   adb shell am start -W -n "$MAIN" >/dev/null
+  dismiss_android_immersive_cling
 }
 
 start_test_mode() {
   adb shell am start -W -n "$MAIN" --ez senton_test_mode true >/dev/null
+  dismiss_android_immersive_cling
 }
 
 wait_boot
@@ -233,6 +253,7 @@ for _ in $(seq 1 20); do
   require_safe_dashboard
   forbid_text_current "UNDER TESTING"
   adb shell am start -W -n "$MAIN" >/dev/null
+  dismiss_android_immersive_cling
   require_safe_dashboard
 done
 
@@ -251,6 +272,7 @@ for _ in $(seq 1 10); do
   sleep 0.25
   require_keep_screen_released
   adb shell am start -W --activity-reorder-to-front -n "$MAIN" >/dev/null
+  dismiss_android_immersive_cling
   require_test_banner
   require_safe_dashboard
   require_keep_screen_on
