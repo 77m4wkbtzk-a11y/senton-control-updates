@@ -51,7 +51,10 @@ for required in [
 
 # Repeated updater checks/downloads must not collide and every APK must be SHA-256 verified.
 assert 'updateCheckInFlight.compareAndSet(false, true)' in java
-assert 'Update download already queued' in java
+assert 'UPDATE IN PROGRESS' in java
+assert 'downloading' in java.lower()
+assert 'verifying' in java.lower()
+assert 'opening Android installer' in java
 assert 'System.currentTimeMillis() + ".apk"' in java
 assert 'sha.matches("[0-9a-f]{64}")' in java
 assert '!apkUrl.startsWith("https://")' in java
