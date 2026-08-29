@@ -305,12 +305,11 @@ public class MainActivity extends Activity {
                 String apkUrl = json.getString("download_url").trim();
                 String sha = json.optString("sha256", "").trim().toLowerCase(Locale.US);
                 if (remoteVersion.isEmpty() || !apkUrl.startsWith("https://") || !sha.matches("[0-9a-f]{64}")) throw new SecurityException("Invalid update manifest");
-                expectedSha = sha;
                 if (isNewer(remoteVersion, BuildConfig.VERSION_NAME)) {
                     if (downloadId != -1) runOnUiThread(() -> updateStatus.setText("Update download already queued"));
                     else {
                         runOnUiThread(() -> updateStatus.setText("Update " + remoteVersion + " found — downloading…"));
-                        startUpdateDownload(apkUrl, remoteVersion);
+                        startUpdateDownload(apkUrl, remoteVersion, sha);
                     }
                 } else runOnUiThread(() -> updateStatus.setText("Wi-Fi updates: current (" + BuildConfig.VERSION_NAME + ")"));
             } catch (Exception e) {
@@ -322,7 +321,7 @@ public class MainActivity extends Activity {
         }, "senton-update-check").start();
     }
 
-    private void startUpdateDownload(String apkUrl, String version) {
+    private void startUpdateDownload(String apkUrl, String version, String sha) {
         DownloadManager dm = (DownloadManager) getSystemService(DOWNLOAD_SERVICE);
         DownloadManager.Request request = new DownloadManager.Request(Uri.parse(apkUrl));
         request.setTitle("Senton Link " + version);
@@ -331,6 +330,9 @@ public class MainActivity extends Activity {
         request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
         String safeVersion = version.replaceAll("[^A-Za-z0-9._-]", "_");
         request.setDestinationInExternalFilesDir(this, null, "Senton-Link-" + safeVersion + "-" + System.currentTimeMillis() + ".apk");
+        // Bind the checksum to the download being queued. A later update check
+        // must never replace the checksum for an APK already in flight.
+        expectedSha = sha;
         downloadId = dm.enqueue(request);
     }
 
@@ -340,12 +342,14 @@ public class MainActivity extends Activity {
             if (cursor == null || !cursor.moveToFirst()) {
                 updateStatus.setText("Update download could not be verified");
                 downloadId = -1;
+                expectedSha = "";
                 return;
             }
             int idx = cursor.getColumnIndex(DownloadManager.COLUMN_STATUS);
             if (idx < 0 || cursor.getInt(idx) != DownloadManager.STATUS_SUCCESSFUL) {
                 updateStatus.setText("Update download failed — tap UPDATE to retry");
                 downloadId = -1;
+                expectedSha = "";
                 return;
             }
         }
@@ -353,17 +357,18 @@ public class MainActivity extends Activity {
         if (uri == null) {
             updateStatus.setText("Update downloaded but installer could not open");
             downloadId = -1;
+            expectedSha = "";
             return;
         }
         new Thread(() -> {
             try {
                 if (!expectedSha.matches("[0-9a-f]{64}") || !expectedSha.equalsIgnoreCase(sha256(uri))) {
-                    runOnUiThread(() -> { updateStatus.setText("Update blocked: SHA-256 verification failed"); downloadId = -1; });
+                    runOnUiThread(() -> { updateStatus.setText("Update blocked: SHA-256 verification failed"); downloadId = -1; expectedSha = ""; });
                     return;
                 }
                 runOnUiThread(() -> launchInstaller(uri));
             } catch (Exception e) {
-                runOnUiThread(() -> { updateStatus.setText("Update verification failed"); downloadId = -1; });
+                runOnUiThread(() -> { updateStatus.setText("Update verification failed"); downloadId = -1; expectedSha = ""; });
             }
         }, "senton-update-verify").start();
     }
@@ -374,6 +379,7 @@ public class MainActivity extends Activity {
         install.setDataAndType(uri, "application/vnd.android.package-archive");
         install.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
         downloadId = -1;
+        expectedSha = "";
         startActivity(install);
     }
 
