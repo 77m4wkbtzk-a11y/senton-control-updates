@@ -6,6 +6,10 @@ android {
     namespace 'au.com.senton.link'
     compileSdk 35
 
+    buildFeatures {
+        buildConfig true
+    }
+
     defaultConfig {
         applicationId 'au.com.senton.link'
         minSdk 26
