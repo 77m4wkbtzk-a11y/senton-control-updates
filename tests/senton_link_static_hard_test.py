@@ -1,0 +1,57 @@
+from pathlib import Path
+import re
+
+ROOT = Path(__file__).resolve().parents[1]
+java = (ROOT / "phone-app/app/src/main/java/au/com/senton/link/MainActivity.java").read_text(encoding="utf-8")
+manifest = (ROOT / "phone-app/app/src/main/AndroidManifest.xml").read_text(encoding="utf-8")
+gradle = (ROOT / "phone-app/app/build.gradle").read_text(encoding="utf-8")
+
+# The local Windows bridge is intentionally HTTP during beta/USB/LAN testing.
+assert 'android:usesCleartextTraffic="true"' in manifest
+assert 'android.permission.INTERNET' in manifest
+
+# Cold launch / reconnect / telemetry refresh hardening.
+assert 'SharedPreferences' in java
+assert 'KEY_PC_ADDRESS' in java
+assert 'pollHandler.postDelayed(this, 3000)' in java
+assert 'pcRequestInFlight.compareAndSet(false, true)' in java
+assert 'setConnectTimeout(3000)' in java
+assert 'setReadTimeout(3000)' in java
+assert 'setPcDisconnected' in java
+assert 'Speed          0 km/h' in java
+
+# Responses fail closed: wrong service/protocol or safe_mode=false cannot be trusted.
+assert '"Senton Control".equals(json.optString("service", ""))' in java
+assert 'json.optInt("protocol", -1) != SENTON_PROTOCOL' in java
+assert 'json.optBoolean("safe_mode", false)' in java
+assert 'Untrusted or unsafe PC response' in java
+
+# Vehicle and charger actuation must stay disabled until authenticated Pi/car work exists.
+for forbidden in [
+    'button("DRIVE", true)',
+    'button("START CHARGE", true)',
+    'button("STOP CHARGE", true)',
+]:
+    assert forbidden not in java, forbidden
+for required in [
+    'button("DRIVE", false)',
+    'button("START CHARGE", false)',
+    'button("STOP CHARGE", false)',
+]:
+    assert required in java, required
+
+# Repeated updater checks/downloads must not collide and every APK must be SHA-256 verified.
+assert 'updateCheckInFlight.compareAndSet(false, true)' in java
+assert 'Update download already queued' in java
+assert 'System.currentTimeMillis() + ".apk"' in java
+assert 'sha.matches("[0-9a-f]{64}")' in java
+assert '!apkUrl.startsWith("https://")' in java
+assert 'expectedSha.equalsIgnoreCase(sha256(uri))' in java
+assert 'MAX_RESPONSE_CHARS' in java
+
+version_name = re.search(r"versionName\s+'([^']+)'", gradle).group(1)
+version_code = int(re.search(r"versionCode\s+(\d+)", gradle).group(1))
+assert version_name == "2.3.1-beta", version_name
+assert version_code == 2301, version_code
+
+print("Senton Link Android static hard-test gates passed")
