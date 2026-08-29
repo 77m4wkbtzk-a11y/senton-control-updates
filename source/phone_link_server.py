@@ -34,6 +34,26 @@ _state = {
 }
 
 
+def reset_transient_state() -> None:
+    """Start every bridge instance from a clean, fail-closed status snapshot."""
+    with _state_lock:
+        _state.update(
+            {
+                "service": "Senton Control",
+                "protocol": PROTOCOL_VERSION,
+                "pc_connected": True,
+                "pi_connected": False,
+                "safe_mode": True,
+                "speed_kmh": 0,
+                "battery_v": None,
+                "signal": None,
+                "message": "Windows link ready",
+                "preview_active": False,
+                "updated": 0,
+            }
+        )
+
+
 def local_ip() -> str:
     """Best-effort LAN address for display; no packet needs to be sent."""
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -151,6 +171,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def start_phone_link(host: str = "0.0.0.0", port: int = PORT):
+    reset_transient_state()
     server = SentonThreadingHTTPServer((host, port), Handler)
     thread = threading.Thread(target=server.serve_forever, name="senton-phone-link", daemon=True)
     thread.start()
