@@ -51,10 +51,14 @@ for required in [
 
 # Repeated updater checks/downloads must not collide and every APK must be SHA-256 verified.
 assert 'updateCheckInFlight.compareAndSet(false, true)' in java
-assert 'UPDATE IN PROGRESS' in java
-assert 'downloading' in java.lower()
-assert 'verifying' in java.lower()
-assert 'opening Android installer' in java
+# The user-visible updater must keep a clear in-progress message through each stage.
+for required_status in [
+    'Update in progress — download already queued',
+    'Update in progress — downloading Senton Link ',
+    'Update in progress — verifying downloaded update…',
+    'Update in progress — verified, opening Android installer…',
+]:
+    assert required_status in java, required_status
 assert 'System.currentTimeMillis() + ".apk"' in java
 assert 'sha.matches("[0-9a-f]{64}")' in java
 assert '!apkUrl.startsWith("https://")' in java
