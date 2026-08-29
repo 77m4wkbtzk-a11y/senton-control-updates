@@ -1,10 +1,10 @@
 {
-  "version": "2.3.1-beta",
-  "versionCode": 2301,
+  "version": "2.3.2-test",
+  "versionCode": 2302,
   "download_url": "https://raw.githubusercontent.com/77m4wkbtzk-a11y/senton-control-updates/main/phone-releases/Senton-Link.apk",
   "sha256": "d863eb28837048e3603a04b4c65ddaecdf97ea0ff5866f0fd5f1a2659e8fd165",
-  "channel": "beta",
+  "channel": "test",
   "priority": "normal",
   "mandatory": false,
-  "notes": "Senton Link 2.3.1-beta hard-test build: automatic PC reconnect/telemetry polling, persisted PC address, fail-closed protocol checks, repeated-update protection, and locked vehicle/charge controls."
+  "notes": "Temporary Senton Link update-screen test. Uses the already verified APK to exercise detection, download, SHA-256 verification, and Android installer launch."
 }
