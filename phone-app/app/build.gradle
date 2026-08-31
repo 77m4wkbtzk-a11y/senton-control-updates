@@ -73,3 +73,5 @@ gradle.taskGraph.whenReady { graph ->
         }
     }
 }
+
+// Signed release trigger: permanent Senton Link signing secrets configured.
