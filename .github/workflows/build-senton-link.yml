@@ -126,10 +126,52 @@ jobs:
         env:
           SENTON_KEYSTORE_B64: ${{ secrets.SENTON_KEYSTORE_B64 }}
         run: |
-          printf '%s' "$SENTON_KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/senton-link-release.jks"
-          test -s "$RUNNER_TEMP/senton-link-release.jks"
-          chmod 600 "$RUNNER_TEMP/senton-link-release.jks"
-          echo "SENTON_KEYSTORE_FILE=$RUNNER_TEMP/senton-link-release.jks" >> "$GITHUB_ENV"
+          set -euo pipefail
+          KEYSTORE="$RUNNER_TEMP/senton-link-release.jks"
+          CLEAN_B64="$RUNNER_TEMP/senton-link-release.b64"
+
+          # Accept common secret-paste formats without weakening validation:
+          # - ordinary/multiline Base64
+          # - data:...;base64,<payload>
+          # - URL-safe Base64 (- and _)
+          printf '%s' "$SENTON_KEYSTORE_B64" \
+            | sed -E 's#^data:[^,]*;base64,##' \
+            | tr -d '[:space:]' \
+            | tr '_-' '/+' > "$CLEAN_B64"
+
+          test -s "$CLEAN_B64" || { echo "Signing keystore secret is empty after normalization."; exit 1; }
+
+          # Restore omitted Base64 padding when required.
+          rem=$(( $(wc -c < "$CLEAN_B64") % 4 ))
+          if [ "$rem" -eq 1 ]; then
+            echo "Signing keystore secret has an invalid Base64 length. Re-create SENTON_KEYSTORE_B64 from the .jks file." >&2
+            exit 1
+          elif [ "$rem" -eq 2 ]; then
+            printf '==' >> "$CLEAN_B64"
+          elif [ "$rem" -eq 3 ]; then
+            printf '=' >> "$CLEAN_B64"
+          fi
+
+          if ! base64 --decode "$CLEAN_B64" > "$KEYSTORE"; then
+            echo "SENTON_KEYSTORE_B64 is not valid Base64. Re-create it from the original .jks keystore file (base64 -w 0 < senton-link-release.jks)." >&2
+            exit 1
+          fi
+
+          test -s "$KEYSTORE" || { echo "Decoded signing keystore is empty." >&2; exit 1; }
+          chmod 600 "$KEYSTORE"
+
+          # Validate that the decoded bytes are actually a readable Java/PKCS12 keystore
+          # and that the configured alias exists before invoking Gradle.
+          if ! keytool -list \
+              -keystore "$KEYSTORE" \
+              -storepass "$SENTON_KEYSTORE_PASSWORD" \
+              -alias "$SENTON_KEY_ALIAS" >/dev/null; then
+            echo "Decoded signing keystore could not be opened with the configured store password/alias." >&2
+            echo "Check SENTON_KEYSTORE_B64, SENTON_KEYSTORE_PASSWORD and SENTON_KEY_ALIAS." >&2
+            exit 1
+          fi
+
+          echo "SENTON_KEYSTORE_FILE=$KEYSTORE" >> "$GITHUB_ENV"
 
       - name: Build signed release APK
         if: steps.signing.outputs.available == 'true'
