@@ -20,7 +20,6 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
 
@@ -52,10 +51,10 @@ public class MainActivity extends Activity {
         SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
         testMode = getIntent() != null && getIntent().getBooleanExtra(EXTRA_TEST_MODE, false);
 
-        // Dedicated Senton display mode: keep the screen awake whenever the dashboard is active.
-        // HOME is declared in AndroidManifest.xml. Once Senton Link is selected as the default
-        // Home app, Home returns here instead of exposing the normal Android launcher.
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        if (testMode) {
+            getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        }
         applyImmersiveLauncherUi();
 
         ScrollView scroll = new ScrollView(this);
@@ -77,10 +76,8 @@ public class MainActivity extends Activity {
         root.addView(testBanner, mt(14));
 
         root.addView(text("● SENTON PI DISCONNECTED — SAFE MODE", 15, Color.rgb(255, 190, 70), true), mt(16));
-
         updateStatus = text(prefs.getString(KEY_UPDATE_STAGE, "Wi-Fi updates: open UPDATE for status"), 13, Color.rgb(135, 166, 196), false);
         root.addView(updateStatus, mt(8));
-
         root.addView(panel("MY SENTON\nReady for vehicle pairing\n\nVehicle controls remain disabled until Senton Pi pairing is complete."), mt(18));
         root.addView(panel("DASHBOARD\n\nSpeed          0 km/h\nMotor temp     -- °C\nBattery        -- V\nSignal         -- dBm"), mt(12));
 
@@ -95,14 +92,14 @@ public class MainActivity extends Activity {
         systemPanel = panel(systemText());
         root.addView(systemPanel, mt(16));
 
-        Button maintenance = button("HOLD FOR ANDROID HOME / MAINTENANCE", true);
+        Button maintenance = button("HOLD FOR ANDROID MAINTENANCE", true);
         maintenance.setOnClickListener(v -> { });
         maintenance.setOnLongClickListener(v -> {
             requestMaintenanceAccess();
             return true;
         });
         root.addView(maintenance, mt(16));
-        TextView maintenanceHint = text("Long-press only. A local PIN is required before Android Home settings or maintenance can be opened.", 12, Color.rgb(135, 166, 196), false);
+        TextView maintenanceHint = text("Long-press only. Opens Android settings only after the local maintenance PIN is verified.", 12, Color.rgb(135, 166, 196), false);
         maintenanceHint.setGravity(Gravity.CENTER);
         root.addView(maintenanceHint, mt(6));
 
@@ -116,7 +113,10 @@ public class MainActivity extends Activity {
         super.onResume();
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         applyImmersiveLauncherUi();
-        if (testMode && testBanner != null) testBanner.setVisibility(View.VISIBLE);
+        if (testMode) {
+            getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+            if (testBanner != null) testBanner.setVisibility(View.VISIBLE);
+        }
         if (systemPanel != null) systemPanel.setText(systemText());
         if (updateStatus != null) {
             updateStatus.setText(getSharedPreferences(PREFS, MODE_PRIVATE).getString(KEY_UPDATE_STAGE, "Wi-Fi updates: open UPDATE for status"));
@@ -124,11 +124,13 @@ public class MainActivity extends Activity {
     }
 
     @Override protected void onPause() {
+        if (testMode) {
+            getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        }
         super.onPause();
     }
 
     @Override public void onBackPressed() {
-        // Dedicated launcher: Back never exits the Senton Home activity.
         applyImmersiveLauncherUi();
     }
 
@@ -146,19 +148,15 @@ public class MainActivity extends Activity {
             Toast.makeText(this, "Maintenance PIN locked. Try again in " + seconds + " seconds.", Toast.LENGTH_LONG).show();
             return;
         }
-
-        if (!prefs.contains(KEY_MAINT_PIN_HASH) || !prefs.contains(KEY_MAINT_PIN_SALT)) {
-            showCreatePinDialog();
-        } else {
-            showVerifyPinDialog();
-        }
+        if (!prefs.contains(KEY_MAINT_PIN_HASH) || !prefs.contains(KEY_MAINT_PIN_SALT)) showCreatePinDialog();
+        else showVerifyPinDialog();
     }
 
     private void showCreatePinDialog() {
         EditText first = pinEntry("Create 4–8 digit PIN");
         new AlertDialog.Builder(this)
                 .setTitle("Create maintenance PIN")
-                .setMessage("This PIN will be required to leave Senton Link for Android Home settings or maintenance. Keep it somewhere safe.")
+                .setMessage("This PIN is required before leaving Senton Link for Android Home settings or maintenance. Keep it somewhere safe.")
                 .setView(first)
                 .setNegativeButton("Cancel", null)
                 .setPositiveButton("Next", (dialog, which) -> {
@@ -168,8 +166,7 @@ public class MainActivity extends Activity {
                         return;
                     }
                     showConfirmPinDialog(pin);
-                })
-                .show();
+                }).show();
     }
 
     private void showConfirmPinDialog(String firstPin) {
@@ -179,19 +176,15 @@ public class MainActivity extends Activity {
                 .setView(confirm)
                 .setNegativeButton("Cancel", null)
                 .setPositiveButton("Save", (dialog, which) -> {
-                    String secondPin = confirm.getText().toString();
-                    if (!firstPin.equals(secondPin)) {
+                    if (!firstPin.equals(confirm.getText().toString())) {
                         Toast.makeText(this, "PINs did not match. Try again.", Toast.LENGTH_LONG).show();
                         return;
                     }
                     if (storePin(firstPin)) {
                         Toast.makeText(this, "Maintenance PIN saved.", Toast.LENGTH_SHORT).show();
                         openAndroidHomeSettings();
-                    } else {
-                        Toast.makeText(this, "Could not securely save the PIN.", Toast.LENGTH_LONG).show();
-                    }
-                })
-                .show();
+                    } else Toast.makeText(this, "Could not securely save the PIN.", Toast.LENGTH_LONG).show();
+                }).show();
     }
 
     private void showVerifyPinDialog() {
@@ -212,13 +205,10 @@ public class MainActivity extends Activity {
             openAndroidHomeSettings();
             return;
         }
-
         int failures = prefs.getInt(KEY_MAINT_PIN_FAILS, 0) + 1;
         SharedPreferences.Editor editor = prefs.edit().putInt(KEY_MAINT_PIN_FAILS, failures);
         if (failures >= MAX_PIN_FAILURES) {
-            editor.putInt(KEY_MAINT_PIN_FAILS, 0)
-                    .putLong(KEY_MAINT_PIN_LOCK_UNTIL, System.currentTimeMillis() + PIN_LOCKOUT_MS)
-                    .apply();
+            editor.putInt(KEY_MAINT_PIN_FAILS, 0).putLong(KEY_MAINT_PIN_LOCK_UNTIL, System.currentTimeMillis() + PIN_LOCKOUT_MS).apply();
             Toast.makeText(this, "Too many wrong PINs. Maintenance locked for 60 seconds.", Toast.LENGTH_LONG).show();
         } else {
             editor.apply();
@@ -235,12 +225,9 @@ public class MainActivity extends Activity {
                     .putString(KEY_MAINT_PIN_SALT, Base64.encodeToString(salt, Base64.NO_WRAP))
                     .putString(KEY_MAINT_PIN_HASH, Base64.encodeToString(hash, Base64.NO_WRAP))
                     .putInt(KEY_MAINT_PIN_FAILS, 0)
-                    .putLong(KEY_MAINT_PIN_LOCK_UNTIL, 0L)
-                    .apply();
+                    .putLong(KEY_MAINT_PIN_LOCK_UNTIL, 0L).apply();
             return true;
-        } catch (Exception e) {
-            return false;
-        }
+        } catch (Exception e) { return false; }
     }
 
     private boolean verifyPin(String pin) {
@@ -248,20 +235,14 @@ public class MainActivity extends Activity {
             SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
             byte[] salt = Base64.decode(prefs.getString(KEY_MAINT_PIN_SALT, ""), Base64.NO_WRAP);
             byte[] expected = Base64.decode(prefs.getString(KEY_MAINT_PIN_HASH, ""), Base64.NO_WRAP);
-            byte[] actual = derivePinHash(pin, salt);
-            return MessageDigest.isEqual(expected, actual);
-        } catch (Exception e) {
-            return false;
-        }
+            return MessageDigest.isEqual(expected, derivePinHash(pin, salt));
+        } catch (Exception e) { return false; }
     }
 
     private byte[] derivePinHash(String pin, byte[] salt) throws Exception {
         PBEKeySpec spec = new PBEKeySpec(pin.toCharArray(), salt, PBKDF2_ITERATIONS, PBKDF2_KEY_BITS);
-        try {
-            return SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256").generateSecret(spec).getEncoded();
-        } finally {
-            spec.clearPassword();
-        }
+        try { return SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256").generateSecret(spec).getEncoded(); }
+        finally { spec.clearPassword(); }
     }
 
     private boolean validPin(String pin) {
@@ -278,8 +259,7 @@ public class MainActivity extends Activity {
 
     private void openAndroidHomeSettings() {
         try {
-            Intent homeSettings = new Intent(Settings.ACTION_HOME_SETTINGS);
-            startActivity(homeSettings);
+            startActivity(new Intent(Settings.ACTION_HOME_SETTINGS));
         } catch (Exception e) {
             startActivity(new Intent(Settings.ACTION_SETTINGS));
         }
