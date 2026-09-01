@@ -29,6 +29,11 @@ public class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
         SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
         testMode = getIntent() != null && getIntent().getBooleanExtra(EXTRA_TEST_MODE, false);
+
+        // Dedicated Senton display mode: keep the screen awake whenever the dashboard is active.
+        // HOME is already declared in AndroidManifest.xml, so once Senton Link is selected as
+        // the default Home app the system returns here instead of the normal Android launcher.
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         if (testMode) {
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         }
@@ -91,6 +96,7 @@ public class MainActivity extends Activity {
 
     @Override protected void onResume() {
         super.onResume();
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         applyImmersiveLauncherUi();
         if (testMode) {
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
@@ -105,6 +111,12 @@ public class MainActivity extends Activity {
             getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         }
         super.onPause();
+    }
+
+    @Override public void onBackPressed() {
+        // In dedicated launcher mode Back must not finish the Home activity and expose
+        // another launcher. The maintenance long-press remains the explicit recovery path.
+        applyImmersiveLauncherUi();
     }
 
     @Override public void onWindowFocusChanged(boolean hasFocus) {
