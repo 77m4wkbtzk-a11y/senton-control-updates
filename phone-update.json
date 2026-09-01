@@ -1,10 +1,10 @@
 {
-  "version": "2.3.3-beta",
-  "versionCode": 2303,
+  "version": "2.3.4-beta",
+  "versionCode": 2304,
   "download_url": "https://raw.githubusercontent.com/77m4wkbtzk-a11y/senton-control-updates/main/phone-releases/Senton-Link.apk",
-  "sha256": "bad97b9b7e5ebb500a32ec0511ba8af43363ed561d9b6f6f6ad04917fa3ba697",
+  "sha256": "ab680de02371b3541694818a817852ac0ffef7ba00f037953dc360e632291002",
   "channel": "beta",
   "priority": "high",
   "mandatory": false,
-  "notes": "Senton Link 2.3.3-beta signed release: dedicated launcher mode foundation, closable update progress page, temporary explicit test mode, and SHA-256 verified updater."
+  "notes": "Senton Link 2.3.4-beta signed updater validation release."
 }
