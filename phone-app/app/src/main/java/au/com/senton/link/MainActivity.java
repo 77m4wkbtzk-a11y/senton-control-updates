@@ -68,12 +68,6 @@ public class MainActivity extends Activity {
         actions.addView(update, weight());
         root.addView(actions, mt(12));
 
-        root.addView(panel("SOLAR CHARGE\n\nSolar input     --\nCharging        OFF\nBattery level   --\nCharge timer    --\n\nCharge controls remain locked until the Pi/car link is authenticated."), mt(16));
-        LinearLayout charge = row();
-        charge.addView(button("START CHARGE", false), weight());
-        charge.addView(button("STOP CHARGE", false), weight());
-        root.addView(charge, mt(8));
-
         systemPanel = panel(systemText());
         root.addView(systemPanel, mt(16));
 
