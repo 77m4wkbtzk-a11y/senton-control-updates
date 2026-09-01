@@ -239,9 +239,10 @@ tap_text_anywhere() {
 }
 
 require_safe_dashboard() {
-  # Normal mode proves fail-closed behavior by state and actual disabled controls.
-  # The explicit VEHICLE CONTROLS LOCKED warning is a Test Mode requirement and is
-  # checked separately in require_test_banner().
+  # Normal mode proves fail-closed behavior by state and the actual DRIVE control.
+  # Solar charging was intentionally removed, so runtime must also prove those old
+  # controls do not reappear. The explicit VEHICLE CONTROLS LOCKED warning is a
+  # Test Mode requirement and is checked separately in require_test_banner().
   dismiss_unrelated_system_dialogs
   dismiss_android_immersive_cling
   scroll_to_top
@@ -249,8 +250,8 @@ require_safe_dashboard() {
   require_text_current "SAFE MODE"
   require_text_anywhere "Safety mode     Active"
   require_disabled_button_anywhere "DRIVE"
-  require_disabled_button_anywhere "START CHARGE"
-  require_disabled_button_anywhere "STOP CHARGE"
+  forbid_text_current "START CHARGE"
+  forbid_text_current "STOP CHARGE"
   scroll_to_top
 }
 
@@ -335,7 +336,7 @@ adb shell cmd package query-activities -a android.intent.action.MAIN -c android.
 grep -Fq "$PKG" "$TMP/home.txt" || die "Senton Link is not registered as a HOME activity"
 
 # Repeated force-stop/cold-start/rapid relaunch cycles must always return to a
-# fail-closed dashboard with all vehicle/charge controls disabled.
+# fail-closed dashboard with DRIVE disabled and removed solar controls absent.
 for _ in $(seq 1 20); do
   adb shell am force-stop "$PKG"
   start_normal
@@ -430,4 +431,4 @@ for i, line in enumerate(lines):
             raise SystemExit("Senton Link fatal exception found in logcat")
 PY
 
-echo "Senton Link Android EMULATOR hard test passed: 20 cold starts, rapid relaunches, 10 background/foreground cycles, Test Mode warning/keep-screen-on checks, updater network-loss/retry bursts, and fail-closed controls"
+echo "Senton Link Android EMULATOR hard test passed: 20 cold starts, rapid relaunches, 10 background/foreground cycles, Test Mode warning/keep-screen-on checks, updater network-loss/retry bursts, removed-solar-control checks, and fail-closed controls"
