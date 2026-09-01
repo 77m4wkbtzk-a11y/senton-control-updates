@@ -80,7 +80,7 @@ for forbidden_auto_exit in [
     assert forbidden_auto_exit not in main_java, forbidden_auto_exit
 assert 'testBanner.setVisibility(View.GONE)' not in pause_block
 
-# Windows Link was intentionally removed from 2.3.3. No old PC-control surface may remain.
+# Windows Link was intentionally removed. No old PC-control surface may remain.
 for removed in [
     'WINDOWS LINK',
     'KEY_PC_ADDRESS',
@@ -98,6 +98,17 @@ assert 'Speed          0 km/h' in main_java
 assert 'SENTON PI DISCONNECTED — SAFE MODE' in main_java
 assert 'Vehicle link    Disconnected' in main_java
 assert 'Safety mode     Active' in main_java
+
+# Solar charging feature has been removed from Senton Link.
+for removed_solar in [
+    'SOLAR CHARGE',
+    'Solar input',
+    'Charging        OFF',
+    'Charge timer',
+    'START CHARGE',
+    'STOP CHARGE',
+]:
+    assert removed_solar not in main_java, removed_solar
 
 # Update page must be in-app, explicitly closable, and reopening it must resume update state.
 assert 'new Intent(this, UpdateProgressActivity.class)' in main_java
@@ -220,19 +231,9 @@ for required_status in [
 ]:
     assert required_status in update_java, required_status
 
-# Vehicle and solar-charge controls remain fail-closed and non-actuating in normal, launcher and test mode.
-for forbidden in [
-    'button("DRIVE", true)',
-    'button("START CHARGE", true)',
-    'button("STOP CHARGE", true)',
-]:
-    assert forbidden not in main_java, forbidden
-for required in [
-    'button("DRIVE", false)',
-    'button("START CHARGE", false)',
-    'button("STOP CHARGE", false)',
-]:
-    assert required in main_java, required
+# Vehicle controls remain fail-closed and non-actuating in normal, launcher and test mode.
+assert 'button("DRIVE", true)' not in main_java
+assert 'button("DRIVE", false)' in main_java
 
 # No direct shell/root/device-admin style execution should exist in this beta app.
 for forbidden in [
