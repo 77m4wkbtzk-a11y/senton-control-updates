@@ -247,7 +247,7 @@ for forbidden in [
 # Exact build identity gate.
 version_name = re.search(r"versionName\s+'([^']+)'", gradle).group(1)
 version_code = int(re.search(r"versionCode\s+(\d+)", gradle).group(1))
-assert version_name == "2.3.3-beta", version_name
-assert version_code == 2303, version_code
+assert version_name == "2.3.4-beta", version_name
+assert version_code == 2304, version_code
 
-print("Senton Link 2.3.3 EXTREME static hard-test gates passed")
+print("Senton Link 2.3.4 EXTREME static hard-test gates passed")
