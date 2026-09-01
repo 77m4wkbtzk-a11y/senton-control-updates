@@ -14,8 +14,8 @@ android {
         applicationId 'com.senton.link'
         minSdk 26
         targetSdk 35
-        versionCode 2303
-        versionName '2.3.3-beta'
+        versionCode 2304
+        versionName '2.3.4-beta'
     }
 
     def testStoreFile = System.getenv('SENTON_TEST_KEYSTORE_FILE')
