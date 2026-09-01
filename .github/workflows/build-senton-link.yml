@@ -49,9 +49,6 @@ jobs:
           curl -L --fail --retry 3 -o /tmp/gradle.zip https://services.gradle.org/distributions/gradle-8.7-bin.zip
           unzip -q /tmp/gradle.zip -d /tmp
 
-      # CI test APKs use a stable, public, test-only signing key so a newer test APK
-      # can update an older test APK on the dedicated test phone. This key is not a
-      # production trust boundary and is never used by the release signing config.
       - name: Install stable CI test signing key
         run: |
           TEST_KEYSTORE="$RUNNER_TEMP/senton-link-ci-debug.keystore"
@@ -76,9 +73,6 @@ jobs:
           cert=$("$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs "$APK" | awk -F': ' '/certificate SHA-256 digest/ {print tolower($2); exit}')
           test "$cert" = "26f74eda042a9f7b17cf11d4cd5181b85c8958d87bc59362d0a7d9647480776e"
 
-      # GitHub-hosted Linux exposes /dev/kvm but the runner user may not have
-      # permission by default. Granting access only affects this disposable CI VM
-      # and prevents the Android emulator from falling back to unstable/very slow TCG.
       - name: Enable KVM for disposable emulator
         run: |
           test -e /dev/kvm
@@ -101,7 +95,7 @@ jobs:
       - name: Upload launcher test APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Senton-Link-2.3.3-beta-launcher-test
+          name: Senton-Link-2.3.4-beta-launcher-test
           path: phone-app/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 7
@@ -129,19 +123,11 @@ jobs:
           set -euo pipefail
           KEYSTORE="$RUNNER_TEMP/senton-link-release.jks"
           CLEAN_B64="$RUNNER_TEMP/senton-link-release.b64"
-
-          # Accept common secret-paste formats without weakening validation:
-          # - ordinary/multiline Base64
-          # - data:...;base64,<payload>
-          # - URL-safe Base64 (- and _)
           printf '%s' "$SENTON_KEYSTORE_B64" \
             | sed -E 's#^data:[^,]*;base64,##' \
             | tr -d '[:space:]' \
             | tr '_-' '/+' > "$CLEAN_B64"
-
           test -s "$CLEAN_B64" || { echo "Signing keystore secret is empty after normalization."; exit 1; }
-
-          # Restore omitted Base64 padding when required.
           rem=$(( $(wc -c < "$CLEAN_B64") % 4 ))
           if [ "$rem" -eq 1 ]; then
             echo "Signing keystore secret has an invalid Base64 length. Re-create SENTON_KEYSTORE_B64 from the .jks file." >&2
@@ -151,17 +137,12 @@ jobs:
           elif [ "$rem" -eq 3 ]; then
             printf '=' >> "$CLEAN_B64"
           fi
-
           if ! base64 --decode "$CLEAN_B64" > "$KEYSTORE"; then
             echo "SENTON_KEYSTORE_B64 is not valid Base64. Re-create it from the original .jks keystore file (base64 -w 0 < senton-link-release.jks)." >&2
             exit 1
           fi
-
           test -s "$KEYSTORE" || { echo "Decoded signing keystore is empty." >&2; exit 1; }
           chmod 600 "$KEYSTORE"
-
-          # Validate that the decoded bytes are actually a readable Java/PKCS12 keystore
-          # and that the configured alias exists before invoking Gradle.
           if ! keytool -list \
               -keystore "$KEYSTORE" \
               -storepass "$SENTON_KEYSTORE_PASSWORD" \
@@ -170,7 +151,6 @@ jobs:
             echo "Check SENTON_KEYSTORE_B64, SENTON_KEYSTORE_PASSWORD and SENTON_KEY_ALIAS." >&2
             exit 1
           fi
-
           echo "SENTON_KEYSTORE_FILE=$KEYSTORE" >> "$GITHUB_ENV"
 
       - name: Build signed release APK
@@ -190,12 +170,12 @@ jobs:
         if: steps.signing.outputs.available == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: Senton-Link-2.3.3-beta-signed-release
+          name: Senton-Link-2.3.4-beta-signed-release
           path: phone-app/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
           retention-days: 14
 
-      - name: Publish Senton Link 2.3.3-beta
+      - name: Publish Senton Link 2.3.4-beta
         if: steps.signing.outputs.available == 'true'
         run: |
           git fetch origin main
@@ -209,20 +189,20 @@ jobs:
           sha=$(sha256sum phone-releases/Senton-Link.apk | awk '{print $1}')
           cat > phone-update.json <<EOF
           {
-            "version": "2.3.3-beta",
-            "versionCode": 2303,
+            "version": "2.3.4-beta",
+            "versionCode": 2304,
             "download_url": "https://raw.githubusercontent.com/77m4wkbtzk-a11y/senton-control-updates/main/phone-releases/Senton-Link.apk",
             "sha256": "$sha",
             "channel": "beta",
             "priority": "high",
             "mandatory": false,
-            "notes": "Senton Link 2.3.3-beta signed release: dedicated launcher mode foundation, closable update progress page, temporary explicit test mode, and SHA-256 verified updater."
+            "notes": "Senton Link 2.3.4-beta signed updater validation release."
           }
           EOF
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add phone-releases/Senton-Link.apk phone-update.json
-          git diff --cached --quiet || git commit -m "Publish signed Senton Link 2.3.3-beta"
+          git diff --cached --quiet || git commit -m "Publish signed Senton Link 2.3.4-beta"
           git push origin main
 
       - name: Signed release remains safely blocked
