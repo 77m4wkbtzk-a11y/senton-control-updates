@@ -110,6 +110,21 @@ for removed_solar in [
 ]:
     assert removed_solar not in main_java, removed_solar
 
+# Test sighting SMS must be user-reviewed in the phone's messaging app.
+for required_sms in [
+    'TEST SIGHTING SMS',
+    'showTestSmsDialog()',
+    'Intent.ACTION_SENDTO',
+    'Uri.parse("smsto:" + Uri.encode(recipient))',
+    'sms.putExtra("sms_body", body)',
+    'Unverified possible sighting photo',
+    'Do not treat it as confirmed identification',
+]:
+    assert required_sms in main_java, required_sms
+assert 'android.permission.SEND_SMS' not in manifest
+assert 'SmsManager' not in main_java
+assert '.sendTextMessage(' not in main_java
+
 # Update page must be in-app, explicitly closable, and reopening it must resume update state.
 assert 'new Intent(this, UpdateProgressActivity.class)' in main_java
 for required_ui in [
