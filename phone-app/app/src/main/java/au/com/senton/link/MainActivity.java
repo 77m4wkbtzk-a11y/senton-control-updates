@@ -5,6 +5,7 @@ import android.app.AlertDialog;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Color;
+import android.net.Uri;
 import android.os.Bundle;
 import android.provider.Settings;
 import android.text.InputType;
@@ -34,6 +35,7 @@ public class MainActivity extends Activity {
     private static final String KEY_MAINT_PIN_HASH = "maintenance_pin_hash";
     private static final String KEY_MAINT_PIN_FAILS = "maintenance_pin_fails";
     private static final String KEY_MAINT_PIN_LOCK_UNTIL = "maintenance_pin_lock_until";
+    private static final String KEY_TEST_SMS_NUMBER = "test_sms_number";
     private static final int PIN_MIN_LENGTH = 4;
     private static final int PIN_MAX_LENGTH = 8;
     private static final int MAX_PIN_FAILURES = 5;
@@ -89,6 +91,13 @@ public class MainActivity extends Activity {
         actions.addView(update, weight());
         root.addView(actions, mt(12));
 
+        Button testSms = button("TEST SIGHTING SMS", true);
+        testSms.setOnClickListener(v -> showTestSmsDialog());
+        root.addView(testSms, mt(12));
+        TextView smsHint = text("Test only — opens your SMS app with an unverified possible-sighting message. You review it before sending.", 12, Color.rgb(135, 166, 196), false);
+        smsHint.setGravity(Gravity.CENTER);
+        root.addView(smsHint, mt(6));
+
         systemPanel = panel(systemText());
         root.addView(systemPanel, mt(16));
 
@@ -107,6 +116,54 @@ public class MainActivity extends Activity {
         footer.setGravity(Gravity.CENTER);
         root.addView(footer, mt(22));
         setContentView(scroll);
+    }
+
+    private void showTestSmsDialog() {
+        SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+        EditText number = new EditText(this);
+        number.setHint("Your mobile number");
+        number.setSingleLine(true);
+        number.setInputType(InputType.TYPE_CLASS_PHONE);
+        number.setText(prefs.getString(KEY_TEST_SMS_NUMBER, ""));
+        number.setSelection(number.getText().length());
+
+        new AlertDialog.Builder(this)
+                .setTitle("Test sighting SMS")
+                .setMessage("Enter the phone number that should receive the test. Senton Link will open the SMS app with the message pre-filled; it will not send automatically.")
+                .setView(number)
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Open SMS", (dialog, which) -> {
+                    String recipient = number.getText().toString().trim();
+                    if (!validSmsRecipient(recipient)) {
+                        Toast.makeText(this, "Enter a valid mobile number.", Toast.LENGTH_LONG).show();
+                        return;
+                    }
+                    prefs.edit().putString(KEY_TEST_SMS_NUMBER, recipient).apply();
+                    openTestSightingSms(recipient);
+                }).show();
+    }
+
+    private boolean validSmsRecipient(String recipient) {
+        if (recipient == null) return false;
+        String compact = recipient.replace(" ", "").replace("-", "").replace("(", "").replace(")", "");
+        return compact.matches("\\+?\\d{8,15}");
+    }
+
+    private void openTestSightingSms(String recipient) {
+        String body = "Senton Link – TEST Possible Missing Person Sighting\n\n" +
+                "Location: Near the petrol station on Main Rd, Hahndorf\n" +
+                "Time: TEST MESSAGE\n\n" +
+                "Notes: Saw someone who may match the missing-person description. Grey hoodie, black pants, walking toward the shops.\n\n" +
+                "Photo: Unverified possible sighting photo would be attached in the full Missing Person Mode.\n\n" +
+                "This is an unverified TEST sighting. Do not treat it as confirmed identification.";
+        Intent sms = new Intent(Intent.ACTION_SENDTO);
+        sms.setData(Uri.parse("smsto:" + Uri.encode(recipient)));
+        sms.putExtra("sms_body", body);
+        try {
+            startActivity(sms);
+        } catch (Exception e) {
+            Toast.makeText(this, "No SMS app is available on this phone.", Toast.LENGTH_LONG).show();
+        }
     }
 
     @Override protected void onResume() {
